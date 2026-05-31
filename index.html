@@ -458,19 +458,20 @@
   function lockPiece() {
     const ch = childCell(piece);
     const lockedKeys = [];
-    if (piece.row >= 0) lockedKeys.push(piece.row * COLS + piece.col);
-    if (ch.r >= 0) lockedKeys.push(ch.r * COLS + ch.c);
-    // 盤面に固定(上にはみ出した分はゲームオーバー判定で扱う)
+    if (piece.row >= 0 && piece.row < ROWS) lockedKeys.push(piece.row * COLS + piece.col);
+    if (ch.r >= 0 && ch.r < ROWS) lockedKeys.push(ch.r * COLS + ch.c);
+    // 盤面に収まるぶんを固定(上にはみ出した分は捨てる)。
+    // ここではゲームオーバーにせず、まず連鎖を完全に解決する。
     placeCell(piece.row, piece.col, piece.axis);
     placeCell(ch.r, ch.c, piece.child);
     piece = null;
     sLand();
-    if (gameOver) { endGame(); return; }
-    beginResolve(lockedKeys);
+    beginResolve(lockedKeys);   // 連鎖がすべて解決してから次のぷよを出す
   }
 
   function placeCell(r, c, color) {
-    if (r < 0) { gameOver = true; return; }
+    // 盤外(上にはみ出したセルなど)は無視。ゲームオーバー判定は出現時のみ行う。
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
     board[r][c] = color;
   }
 
