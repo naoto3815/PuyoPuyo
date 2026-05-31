@@ -359,6 +359,28 @@
   function stopBGM() {
     if (bgm && !bgm.paused) bgm.pause();
   }
+  // ピンチ(積み上がり)に応じてBGMのテンポを上げる
+  let bgmRate = 1;
+  function dangerLevel() {
+    // 一番高く積まれた段を探す(小さいrほど上=危険)。見える最上段は HIDDEN
+    let minRow = TOTAL;
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < TOTAL; r++) {
+        if (board[r][c] !== null) { if (r < minRow) minRow = r; break; }
+      }
+    }
+    const safeRow = HIDDEN + 6;            // ここより下なら平常(rate=1)
+    const dangerRow = HIDDEN;              // 最上段に到達でMAX
+    return Math.max(0, Math.min(1, (safeRow - minRow) / (safeRow - dangerRow)));
+  }
+  function updateBGMTempo() {
+    if (!bgm) return;
+    const target = gameOver ? 1 : 1 + dangerLevel() * 0.6;  // 最大1.6倍速
+    bgmRate += (target - bgmRate) * 0.08;                   // なめらかに追従
+    if (Math.abs(bgmRate - target) < 0.005) bgmRate = target;
+    try { bgm.preservesPitch = true; bgm.mozPreservesPitch = true; bgm.webkitPreservesPitch = true; } catch (e) {}
+    bgm.playbackRate = bgmRate;
+  }
   function tone(freq, dur, type, vol, slideTo, delay) {
     if (!soundOn || !audioCtx) return;
     const t0 = audioCtx.currentTime + (delay || 0);
@@ -443,6 +465,10 @@
     overlay.classList.remove('show');
     updateHUD(0);
     drawNext();
+    // BGMをテンポ等速に戻して再開(リスタートはユーザー操作なので再生可)
+    bgmRate = 1;
+    if (bgm) { bgm.playbackRate = 1; bgm.currentTime = 0; }
+    startBGM();
   }
 
   function updateHUD(chain) {
@@ -774,6 +800,7 @@
     overlayTitle.textContent = 'GAME OVER';
     overlaySub.textContent = `スコア ${score} / 最大 ${maxChain} 連鎖`;
     overlay.classList.add('show');
+    stopBGM();   // ゲームオーバーで音楽を止める
   }
 
   // ---- 描画 ----
@@ -1305,6 +1332,7 @@
       chainPopup.t += dt;
       if (chainPopup.t >= CHAIN_POPUP_DUR) chainPopup = null;
     }
+    updateBGMTempo();   // ピンチで曲を速く・通常で元に戻す
     draw();
     requestAnimationFrame(loop);
   }
