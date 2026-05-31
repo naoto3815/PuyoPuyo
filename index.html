@@ -224,6 +224,8 @@
 <script>
 (() => {
   const COLS = 6, ROWS = 12, CELL = 44;
+  const HIDDEN = 2;            // 画面の上に隠れた控え行。ここまで積み切るとゲームオーバー
+  const TOTAL = ROWS + HIDDEN; // 盤面配列の総行数(見える12行 + 見えない2行)
   const COLORS = ['#e63a2b', '#54b22e', '#2f7fd0', '#f7c01a', '#9d55d4']; // 赤緑青黄紫(本家バッジの色に合わせる)
   const EDGE   = ['#9c1d14', '#2c7a1b', '#1a4f93', '#cf9400', '#65299c'];
 
@@ -386,7 +388,7 @@
   }
 
   function cellFree(r, c) {
-    if (c < 0 || c >= COLS || r >= ROWS) return false;
+    if (c < 0 || c >= COLS || r >= TOTAL) return false;
     if (r < 0) return true; // 上方向のはみ出しは許容(出現直後)
     return board[r][c] === null;
   }
@@ -398,7 +400,7 @@
   }
 
   function reset() {
-    board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+    board = Array.from({ length: TOTAL }, () => Array(COLS).fill(null));
     score = 0;
     maxChain = 0;
     gameOver = false;
@@ -467,8 +469,8 @@
   function lockPiece() {
     const ch = childCell(piece);
     const lockedKeys = [];
-    if (piece.row >= 0 && piece.row < ROWS) lockedKeys.push(piece.row * COLS + piece.col);
-    if (ch.r >= 0 && ch.r < ROWS) lockedKeys.push(ch.r * COLS + ch.c);
+    if (piece.row >= 0 && piece.row < TOTAL) lockedKeys.push(piece.row * COLS + piece.col);
+    if (ch.r >= 0 && ch.r < TOTAL) lockedKeys.push(ch.r * COLS + ch.c);
     // 盤面に収まるぶんを固定(上にはみ出した分は捨てる)。
     // ここではゲームオーバーにせず、まず連鎖を完全に解決する。
     placeCell(piece.row, piece.col, piece.axis);
@@ -480,15 +482,15 @@
 
   function placeCell(r, c, color) {
     // 盤外(上にはみ出したセルなど)は無視。ゲームオーバー判定は出現時のみ行う。
-    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+    if (r < 0 || r >= TOTAL || c < 0 || c >= COLS) return;
     board[r][c] = color;
   }
 
   // ---- 連鎖処理 ----
   function applyGravity() {
     for (let c = 0; c < COLS; c++) {
-      let write = ROWS - 1;
-      for (let r = ROWS - 1; r >= 0; r--) {
+      let write = TOTAL - 1;
+      for (let r = TOTAL - 1; r >= 0; r--) {
         if (board[r][c] !== null) {
           const v = board[r][c];
           board[r][c] = null;
@@ -504,8 +506,8 @@
   function computeFalls() {
     const falls = [];
     for (let c = 0; c < COLS; c++) {
-      let write = ROWS - 1;
-      for (let r = ROWS - 1; r >= 0; r--) {
+      let write = TOTAL - 1;
+      for (let r = TOTAL - 1; r >= 0; r--) {
         if (board[r][c] !== null) {
           if (write !== r) {
             falls.push({ color: board[r][c], col: c, fromRow: r, toRow: write });
@@ -560,9 +562,9 @@
 
   // 消去対象(同色4つ以上つながり)のセルを集める。盤面はまだ消さない
   function findClearCells() {
-    const seen = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    const seen = Array.from({ length: TOTAL }, () => Array(COLS).fill(false));
     const result = [];
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r < TOTAL; r++) {
       for (let c = 0; c < COLS; c++) {
         if (board[r][c] === null || seen[r][c]) continue;
         const color = board[r][c];
@@ -574,7 +576,7 @@
           group.push([cr, cc]);
           for (let d = 0; d < 4; d++) {
             const nr = cr + DR[d], nc = cc + DC[d];
-            if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+            if (nr < 0 || nr >= TOTAL || nc < 0 || nc >= COLS) continue;
             if (seen[nr][nc] || board[nr][nc] !== color) continue;
             seen[nr][nc] = true;
             stack.push([nr, nc]);
@@ -1028,7 +1030,7 @@
 
   // 隣り合う同色ぷよの「すき間」を本体色で埋めて、くっついて見せる(スプライトの下に描く)
   function drawConnectors(g, colorAt) {
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r < TOTAL; r++) {
       for (let c = 0; c < COLS; c++) {
         const col = colorAt(r, c);
         if (col === null || col === undefined) continue;
@@ -1041,7 +1043,7 @@
           g.fill();
         }
         // 下隣
-        if (r + 1 < ROWS && colorAt(r + 1, c) === col) {
+        if (r + 1 < TOTAL && colorAt(r + 1, c) === col) {
           const cx = (c + 0.5) * CELL, cy = (r + 1) * CELL;
           const w = CELL * 0.66, h = CELL * 0.92;
           g.fillStyle = bodyGrad(g, col, cy - h / 2, cy + h / 2);
@@ -1061,14 +1063,16 @@
       const m = shakeMag * env;
       ctx.translate((Math.random() * 2 - 1) * m, (Math.random() * 2 - 1) * m);
     }
-    // グリッド線
+    // 盤面は上のHIDDEN行を画面外に隠す(見える12行ぶんだけ表示)
+    ctx.translate(0, -HIDDEN * CELL);
+    // グリッド線(見える領域: 盤面行 HIDDEN〜TOTAL)
     ctx.strokeStyle = 'rgba(255,255,255,0.05)';
     ctx.lineWidth = 1;
     for (let c = 1; c < COLS; c++) {
-      ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, canvas.height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c * CELL, HIDDEN * CELL); ctx.lineTo(c * CELL, TOTAL * CELL); ctx.stroke();
     }
-    for (let r = 1; r < ROWS; r++) {
-      ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(canvas.width, r * CELL); ctx.stroke();
+    for (let r = HIDDEN + 1; r < TOTAL; r++) {
+      ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(COLS * CELL, r * CELL); ctx.stroke();
     }
     // ポップ(縮小)中の消去セルは色付き body を隠し、白いポップだけ見せる
     const popping = phase === 'clear' && clearTimer >= clearDur - 130;
@@ -1088,7 +1092,7 @@
       if (chc.r >= 0) overlayCells[chc.r * COLS + chc.c] = piece.child;
     }
     const colorAt = (r, c) => {
-      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+      if (r < 0 || r >= TOTAL || c < 0 || c >= COLS) return null;
       const k = r * COLS + c;
       if (k in overlayCells) return overlayCells[k];
       if (hidden(r, c)) return null;
@@ -1098,7 +1102,7 @@
     drawConnectors(ctx, colorAt);
 
     // 固定ぷよ: 3Dモデル画像で描画(着地の揺れを反映)
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r < TOTAL; r++) {
       for (let c = 0; c < COLS; c++) {
         const col = board[r][c];
         if (col === null || hidden(r, c)) continue;
