@@ -352,7 +352,7 @@
     }
   }
   function startBGM() {            // ユーザー操作の直後に呼ぶ(自動再生制限の解除)
-    if (!soundOn) return;
+    if (!soundOn || gameOver) return;   // ゲームオーバー中は操作しても鳴らさない
     ensureBGM();
     if (bgm.paused) { const p = bgm.play(); if (p && p.catch) p.catch(() => {}); }
   }
