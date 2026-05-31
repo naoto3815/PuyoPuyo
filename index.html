@@ -61,6 +61,17 @@
     flex: 1; accent-color: #6c5ce7; cursor: pointer;
   }
   .speed .num { font-size: 18px; font-weight: bold; width: 1.4em; text-align: center; }
+  .colors { margin-bottom: 18px; }
+  .colors .label { font-size: 13px; color: #a99fd6; letter-spacing: 1px; }
+  .seg { display: flex; gap: 8px; margin-top: 8px; }
+  .seg-btn {
+    flex: 1; padding: 8px 0; border-radius: 8px; cursor: pointer;
+    border: 2px solid #4a3f7a; background: #1a1430; color: #cfc8ec;
+    font-size: 15px; font-weight: bold; letter-spacing: 1px;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: background .12s ease, border-color .12s ease, color .12s ease;
+  }
+  .seg-btn.is-on { background: #6c5ce7; border-color: #6c5ce7; color: #fff; }
   .sound-toggle {
     display: flex; align-items: center; gap: 8px;
     font-size: 14px; color: #cfc8ec; margin-bottom: 14px; cursor: pointer;
@@ -190,6 +201,13 @@
         <span class="num" id="speed-num">2</span>
       </div>
     </div>
+    <div class="colors">
+      <div class="label">色の種類</div>
+      <div class="seg" id="color-seg">
+        <button type="button" class="seg-btn is-on" data-n="4">4色</button>
+        <button type="button" class="seg-btn" data-n="5">5色</button>
+      </div>
+    </div>
     <label class="sound-toggle">
       <input type="checkbox" id="sound" checked>
       <span>サウンド</span>
@@ -246,6 +264,7 @@
   // board[r][c] = color index, or null
   let board, piece, nextColors, score, maxChain, gameOver;
   let dropTimer = 0;
+  let colorCount = 4;          // 使う色の種類数(4 or 5)。UIで切替
   let dropInterval = 650;      // 通常落下間隔(ms) ※スライダーで変更
   const SOFT_INTERVAL = 45;    // ↓押下中の落下間隔(ms)
   let softDrop = false;
@@ -349,7 +368,7 @@
   const DR = [-1, 0, 1, 0];
   const DC = [0, 1, 0, -1];
 
-  function randColor() { return Math.floor(Math.random() * COLORS.length); }
+  function randColor() { return Math.floor(Math.random() * colorCount); }
 
   function newPiece() {
     const colors = nextColors || [randColor(), randColor()];
@@ -1214,6 +1233,20 @@
     const lv = parseInt(speedInput.value, 10);
     applySpeed(lv);
     speedNum.textContent = lv;
+  });
+
+  // 色の種類 (4色 / 5色) 切替。変更したらゲームをリセットして反映
+  const colorSeg = document.getElementById('color-seg');
+  colorSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn) return;
+    const n = parseInt(btn.dataset.n, 10);
+    if (n === colorCount) return;
+    colorCount = n;
+    for (const b of colorSeg.querySelectorAll('.seg-btn')) {
+      b.classList.toggle('is-on', parseInt(b.dataset.n, 10) === colorCount);
+    }
+    reset();   // 盤面を作り直して新しい色数で開始
   });
 
   // サウンド ON/OFF
