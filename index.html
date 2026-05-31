@@ -342,6 +342,23 @@
     }
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   }
+  // ---- BGM(フォルダ内のMP3をループ再生) ----
+  let bgm = null;
+  function ensureBGM() {
+    if (!bgm) {
+      bgm = new Audio('One_Last_Combo.mp3');
+      bgm.loop = true;
+      bgm.volume = 0.35;
+    }
+  }
+  function startBGM() {            // ユーザー操作の直後に呼ぶ(自動再生制限の解除)
+    if (!soundOn) return;
+    ensureBGM();
+    if (bgm.paused) { const p = bgm.play(); if (p && p.catch) p.catch(() => {}); }
+  }
+  function stopBGM() {
+    if (bgm && !bgm.paused) bgm.pause();
+  }
   function tone(freq, dur, type, vol, slideTo, delay) {
     if (!soundOn || !audioCtx) return;
     const t0 = audioCtx.currentTime + (delay || 0);
@@ -1295,6 +1312,7 @@
   // ---- キー ----
   document.addEventListener('keydown', (e) => {
     ensureAudio();   // 最初のキー操作で音声を有効化(自動再生制限の解除)
+    startBGM();      // 最初の操作でBGM開始
     if (gameOver) return;
     switch (e.key) {
       case 'a': case 'A':  move(-1); e.preventDefault(); break;   // A=左
@@ -1318,6 +1336,7 @@
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       ensureAudio();
+      startBGM();      // タップ操作でBGM開始
       if (gameOver) return;
       onDown();
       if (repeat) timer = setInterval(onDown, 110);
@@ -1361,7 +1380,8 @@
   const soundInput = document.getElementById('sound');
   soundInput.addEventListener('change', () => {
     soundOn = soundInput.checked;
-    if (soundOn) { ensureAudio(); sMove(); }   // ONにした合図
+    if (soundOn) { ensureAudio(); sMove(); startBGM(); }   // ONにした合図 + BGM再開
+    else { stopBGM(); }                                     // OFFでBGM停止
   });
 
   reset();
