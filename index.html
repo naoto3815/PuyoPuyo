@@ -22,7 +22,14 @@
     gap: 24px;
     align-items: flex-start;
   }
-  h1 { font-size: 28px; margin: 0 0 16px; letter-spacing: 3px; }
+  h1 { font-size: 28px; margin: 0; letter-spacing: 3px; }
+  /* タイトル＋NEXTを盤面の真上に並べる（盤面の近くで次が見える） */
+  .board-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    width: 272px; margin-bottom: 12px; gap: 12px;
+  }
+  .next-head { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .next-head .label { font-size: 11px; color: #a99fd6; letter-spacing: 2px; }
   canvas {
     background: #0d0a1f;
     border: 4px solid #4a3f7a;
@@ -44,7 +51,7 @@
     background: #0d0a1f;
     border: 2px solid #4a3f7a;
     border-radius: 6px;
-    width: 96px; height: 136px;
+    width: 56px; height: 80px;   /* ヘッダー用に小さく表示(内部解像度はそのまま) */
     display: block;
   }
   .speed { margin-bottom: 18px; }
@@ -117,7 +124,9 @@
   @media (max-width: 720px) {
     body { padding: 14px; align-items: flex-start; }
     .game { flex-direction: column; gap: 16px; width: 100%; align-items: center; }
-    h1 { font-size: 24px; text-align: center; }
+    .left { width: 100%; display: flex; flex-direction: column; align-items: center; }
+    h1 { font-size: 24px; }
+    .board-head { width: 100%; max-width: 320px; }
     .panel { width: 100%; max-width: 320px; }
     .keys { display: none; }            /* キーボード説明はスマホでは不要 */
     .pad { width: 100%; max-width: 320px; justify-content: space-around; }
@@ -128,8 +137,14 @@
 </head>
 <body>
 <div class="game">
-  <div>
-    <h1>ぷよぷよ</h1>
+  <div class="left">
+    <div class="board-head">
+      <h1>ぷよぷよ</h1>
+      <div class="next-head">
+        <span class="label">NEXT</span>
+        <canvas class="next-box" id="next" width="96" height="136"></canvas>
+      </div>
+    </div>
     <div class="board-wrap">
       <canvas id="board" width="264" height="528"></canvas>
       <div class="overlay" id="overlay">
@@ -165,10 +180,6 @@
     <div class="stat">
       <div class="label">CHAIN</div>
       <div class="value" id="chain">0</div>
-    </div>
-    <div class="stat">
-      <div class="label">NEXT</div>
-      <canvas class="next-box" id="next" width="96" height="136"></canvas>
     </div>
     <div class="speed">
       <div class="label">落下スピード</div>
@@ -305,9 +316,9 @@
     }
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   }
-  function tone(freq, dur, type, vol, slideTo) {
+  function tone(freq, dur, type, vol, slideTo, delay) {
     if (!soundOn || !audioCtx) return;
-    const t0 = audioCtx.currentTime;
+    const t0 = audioCtx.currentTime + (delay || 0);
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = type || 'sine';
@@ -324,10 +335,14 @@
   const sRotate = () => tone(560, 0.06, 'square', 0.06, 680);
   const sLand   = () => { tone(150, 0.13, 'sine', 0.16, 90); tone(300, 0.07, 'triangle', 0.05); };
   const sDrop   = () => tone(120, 0.09, 'sine', 0.10, 80);
-  function sPop(chain) {            // 連鎖が進むほど高い音(本家風)
-    const base = 523 * Math.pow(2, Math.min(chain - 1, 12) / 12); // 半音ずつ上昇
-    tone(base, 0.20, 'triangle', 0.18, base * 1.6);
-    tone(base * 2, 0.16, 'sine', 0.07, base * 2.6);
+  function sPop(chain) {            // 連鎖が進むほど高い・かわいいキラッとした音
+    const base = 660 * Math.pow(2, Math.min(chain - 1, 12) / 12); // 連鎖ごとに半音ずつ上昇
+    // ぷるんと弾けるメイン(やわらかいsineで上にスライド)
+    tone(base, 0.16, 'sine', 0.15, base * 1.7);
+    // 少し遅れて5度上の「ぴょん」(かわいい跳ねる感じ)
+    tone(base * 1.5, 0.15, 'sine', 0.11, base * 1.5 * 1.5, 0.055);
+    // さらに高音の「キラッ」(きらめき)
+    tone(base * 3, 0.12, 'triangle', 0.05, base * 3 * 1.25, 0.10);
   }
 
   // 子ぷよの相対位置: 0=上, 1=右, 2=下, 3=左
