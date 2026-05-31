@@ -289,9 +289,10 @@
   let chainPopup = null;       // 連鎖数ポップ {n, t, x, y}
   const CHAIN_POPUP_DUR = 1100;
   // 連鎖の派手な演出
-  let shockwaves = [];         // 衝撃波リング [{x,y,t,dur,hue,max}]
+  let shockwaves = [];         // 衝撃波リング [{x,y,t,delay,dur,hue,max}]
   let shakeT = 0, shakeMag = 0;// 画面シェイク(残り時間ms / 強さpx)
   let flash = null;            // 画面フラッシュ {t,dur,alpha,hue}
+  let chargeX = 0, chargeY = 0, chargeHue = '#fff'; // 「溜め」演出の中心と色
 
   // 落下(重力)演出の状態
   let fallingList = [];        // 落下中のぷよ [{color,col,fromRow,toRow}]
@@ -653,9 +654,15 @@
     chainEl.textContent = resolveChain;   // 連鎖数を即時表示
     clearingList = cells;
     clearTimer = 0;
-    // 連鎖が進むほど点滅を長く「溜める」(最大で約+490ms)
-    clearDur = CLEAR_DURATION + Math.min(resolveChain - 1, 7) * 70;
-    phase = 'clear';                       // ← この間は点滅演出(入力停止)
+    // 溜め演出の中心(消えるぷよの重心)と色を記録
+    let sx = 0, sy = 0;
+    for (const { r, c } of cells) { sx += c; sy += r; }
+    chargeX = (sx / cells.length + 0.5) * CELL;
+    chargeY = (sy / cells.length + 0.5) * CELL;
+    chargeHue = CHAIN_HUES[Math.min(Math.max(resolveChain - 1, 0), CHAIN_HUES.length - 1)];
+    // 連鎖が進むほど点滅を長く「溜める」(最大で約+840ms)
+    clearDur = CLEAR_DURATION + Math.min(resolveChain - 1, 8) * 105;
+    phase = 'clear';                       // ← この間は溜め演出(入力停止)
   }
 
   // 演出が終わったら実際に消す→スコア加算→重力→次の連鎖判定
@@ -674,15 +681,23 @@
     if (resolveChain >= 2) {
       chainPopup = { n: resolveChain, t: 0, x: cx, y: cy };
     }
-    // 衝撃波リング(連鎖が大きいほど大きく広がる)
-    shockwaves.push({ x: cx, y: cy, t: 0, dur: 420 + resolveChain * 40, hue, max: CELL * (2.0 + resolveChain * 0.55) });
-    // 画面フラッシュ(連鎖が大きいほど強く)
-    flash = { t: 0, dur: 240, alpha: Math.min(0.10 + resolveChain * 0.05, 0.38), hue };
-    // 画面シェイク(連鎖数と消した数で強くなる)
-    shakeMag = Math.min(2 + (resolveChain - 1) * 2.2 + n * 0.2, 13);
-    shakeT = 200 + resolveChain * 22;
+    // 衝撃波リング: 同心円を時間差で連発して派手に(連鎖が大きいほど数も大きさも増す)
+    const rings = Math.min(2 + Math.floor(resolveChain / 2), 5);
+    for (let i = 0; i < rings; i++) {
+      shockwaves.push({
+        x: cx, y: cy, t: 0, delay: i * 75,
+        dur: 480 + resolveChain * 55,
+        hue: CHAIN_HUES[Math.min(resolveChain - 1 + i, CHAIN_HUES.length - 1)],
+        max: CELL * (2.4 + resolveChain * 0.7) * (1 + i * 0.2),
+      });
+    }
+    // 画面フラッシュ(強め)
+    flash = { t: 0, dur: 300, alpha: Math.min(0.16 + resolveChain * 0.07, 0.55), hue };
+    // 画面シェイク(連鎖数と消した数で強くなる・強め)
+    shakeMag = Math.min(3 + (resolveChain - 1) * 2.8 + n * 0.25, 18);
+    shakeT = 240 + resolveChain * 30;
     for (const { r, c } of clearingList) {
-      emitPop(r, c, board[r][c]);          // 弾けるパーティクル
+      emitPop(r, c, board[r][c], resolveChain);   // 弾けるパーティクル(連鎖で量・勢い増)
       board[r][c] = null;
     }
     clearingList = [];
@@ -690,13 +705,15 @@
   }
 
   // ---- パーティクル(消える瞬間の演出) ----
-  function emitPop(r, c, colorIdx) {
+  function emitPop(r, c, colorIdx, chain) {
+    chain = chain || 1;
+    const boost = 1 + Math.min(chain, 8) * 0.14;     // 連鎖が大きいほど勢いを増す
     const cx = c * CELL + CELL / 2, cy = r * CELL + CELL / 2;
-    const n = 12;
+    const n = 12 + Math.min(chain, 8) * 3;           // 連鎖が大きいほど粒も多く
     for (let i = 0; i < n; i++) {
       const a = (Math.PI * 2 * i / n) + Math.random() * 0.5;
-      const sp = 1.8 + Math.random() * 3.6;
-      const star = Math.random() < 0.4;        // 一部はキラキラ星
+      const sp = (1.8 + Math.random() * 3.6) * boost;
+      const star = Math.random() < 0.45;       // 一部はキラキラ星
       particles.push({
         x: cx, y: cy,
         vx: Math.cos(a) * sp,
@@ -759,24 +776,29 @@
   // ---- 衝撃波リング ----
   function updateShockwaves(dt) {
     for (const s of shockwaves) s.t += dt;
-    shockwaves = shockwaves.filter((s) => s.t < s.dur);
+    shockwaves = shockwaves.filter((s) => s.t < (s.delay || 0) + s.dur);
   }
 
   function drawShockwaves(g) {
     for (const s of shockwaves) {
-      const p = s.t / s.dur;                       // 0..1
+      const te = s.t - (s.delay || 0);             // 時間差ぶんを引く
+      if (te < 0) continue;                        // まだ発生前
+      const p = te / s.dur;                        // 0..1
       const rad = s.max * (0.18 + 0.82 * (1 - Math.pow(1 - p, 2)));
       g.save();
       g.globalCompositeOperation = 'lighter';
-      // 外側のリング
-      g.globalAlpha = (1 - p) * 0.6;
-      g.lineWidth = Math.max(1, CELL * 0.2 * (1 - p));
+      g.shadowColor = s.hue;
+      g.shadowBlur = CELL * 0.4 * (1 - p);
+      // 外側のリング(太め)
+      g.globalAlpha = (1 - p) * 0.7;
+      g.lineWidth = Math.max(1, CELL * 0.26 * (1 - p));
       g.strokeStyle = s.hue;
       g.beginPath();
       g.arc(s.x, s.y, rad, 0, Math.PI * 2);
       g.stroke();
       // 内側のやわらかい光
-      g.globalAlpha = (1 - p) * 0.16;
+      g.shadowBlur = 0;
+      g.globalAlpha = (1 - p) * 0.18;
       g.beginPath();
       g.arc(s.x, s.y, rad * 0.7, 0, Math.PI * 2);
       g.fillStyle = s.hue;
@@ -1157,6 +1179,34 @@
     if (phase === 'clear') {
       const t = clearTimer;
       const popStart = clearDur - 130;
+      // 溜め演出: 中心に光が集まり、終盤ほど強く速く脈動する
+      if (t < popStart) {
+        const cp = Math.min(1, t / popStart);                 // 0..1 充電進捗
+        const pulse = 0.5 + 0.5 * Math.sin(t / (60 - cp * 38)); // 終盤ほど速い鼓動
+        // 中心の集光グロー(だんだん大きく明るく)
+        const R = CELL * (1.2 + 3.4 * cp);
+        const grd = ctx.createRadialGradient(chargeX, chargeY, 0, chargeX, chargeY, R);
+        grd.addColorStop(0, chargeHue);
+        grd.addColorStop(1, _rgba(chargeHue, 0));
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = (0.10 + 0.5 * cp) * (0.55 + 0.45 * pulse);
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(chargeX, chargeY, R, 0, Math.PI * 2);
+        ctx.fill();
+        // 収束リング(外から中心へ縮んで「溜め」を見せる)
+        ctx.globalAlpha = 0.4 * cp;
+        ctx.lineWidth = CELL * 0.14;
+        ctx.strokeStyle = chargeHue;
+        ctx.shadowColor = chargeHue;
+        ctx.shadowBlur = CELL * 0.5;
+        const cr = CELL * (5.0 * (1 - cp) + 0.6);
+        ctx.beginPath();
+        ctx.arc(chargeX, chargeY, cr, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
       for (const { r, c } of clearingList) {
         const x = c * CELL, y = r * CELL;
         if (t < popStart) {
@@ -1315,7 +1365,7 @@
         updateFall(dt);
       } else if (phase === 'clear') {
         clearTimer += dt;
-        if (clearTimer >= CLEAR_DURATION) {
+        if (clearTimer >= clearDur) {   // 溜め(clearDur)が終わったら消去・爆発
           finishClearStep();
         }
       }
