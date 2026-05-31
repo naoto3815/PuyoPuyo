@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ぷよぷよ</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #1a1430;
+    color: #fff;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .game {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  h1 { font-size: 28px; margin: 0 0 16px; letter-spacing: 3px; }
+  canvas {
+    background: #0d0a1f;
+    border: 4px solid #4a3f7a;
+    border-radius: 8px;
+    display: block;
+    image-rendering: auto;
+  }
+  .panel {
+    min-width: 200px;
+    background: #241c45;
+    border: 2px solid #4a3f7a;
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .stat { margin-bottom: 18px; }
+  .stat .label { font-size: 13px; color: #a99fd6; letter-spacing: 1px; }
+  .stat .value { font-size: 34px; font-weight: bold; }
+  .next-box {
+    background: #0d0a1f;
+    border: 2px solid #4a3f7a;
+    border-radius: 6px;
+    width: 96px; height: 136px;
+    display: block;
+  }
+  .speed { margin-bottom: 18px; }
+  .speed .label { font-size: 13px; color: #a99fd6; letter-spacing: 1px; }
+  .speed .row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .speed input[type=range] {
+    flex: 1; accent-color: #6c5ce7; cursor: pointer;
+  }
+  .speed .num { font-size: 18px; font-weight: bold; width: 1.4em; text-align: center; }
+  .sound-toggle {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; color: #cfc8ec; margin-bottom: 14px; cursor: pointer;
+    user-select: none;
+  }
+  .sound-toggle input { width: 16px; height: 16px; accent-color: #6c5ce7; cursor: pointer; }
+  .keys { font-size: 13px; line-height: 2.0; color: #cfc8ec; margin-top: 10px; }
+  .keys b { color: #fff; }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(10,7,25,0.82);
+    border-radius: 4px;
+  }
+  .overlay.show { display: flex; }
+  .overlay h2 { font-size: 28px; margin: 0 0 8px; }
+  .overlay button {
+    margin-top: 12px;
+    padding: 10px 22px;
+    font-size: 15px;
+    border: none;
+    border-radius: 6px;
+    background: #6c5ce7;
+    color: #fff;
+    cursor: pointer;
+  }
+  .overlay button:hover { background: #836df0; }
+  .board-wrap { position: relative; }
+  /* 画面上のコントローラー */
+  .pad {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 14px;
+    margin-top: 18px;
+    width: 272px;
+  }
+  .pad-group { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .pad-label { font-size: 12px; color: #a99fd6; letter-spacing: 2px; }
+  .pad-row { display: flex; gap: 10px; }
+  .btn {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: none; color: #fff; font-size: 22px; line-height: 1;
+    cursor: pointer; user-select: none; -webkit-user-select: none;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    background: #4a3f7a; box-shadow: 0 4px 0 #2c2550;
+    transition: transform .05s ease, box-shadow .05s ease;
+  }
+  .btn:active { transform: translateY(4px); box-shadow: 0 0 0 #2c2550; }
+  .btn.rot {
+    width: 60px; height: 60px; font-size: 26px;
+    background: #6c5ce7; box-shadow: 0 4px 0 #4733b8;
+  }
+  .btn.rot:active { box-shadow: 0 0 0 #4733b8; }
+
+  /* スマホ・縦画面向け: 盤面の下にパネルを回り込ませる */
+  @media (max-width: 720px) {
+    body { padding: 14px; align-items: flex-start; }
+    .game { flex-direction: column; gap: 16px; width: 100%; align-items: center; }
+    h1 { font-size: 24px; text-align: center; }
+    .panel { width: 100%; max-width: 320px; }
+    .keys { display: none; }            /* キーボード説明はスマホでは不要 */
+    .pad { width: 100%; max-width: 320px; justify-content: space-around; }
+    .btn { width: 60px; height: 60px; }
+    .btn.rot { width: 64px; height: 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="game">
+  <div>
+    <h1>ぷよぷよ</h1>
+    <div class="board-wrap">
+      <canvas id="board" width="264" height="528"></canvas>
+      <div class="overlay" id="overlay">
+        <h2 id="overlay-title">GAME OVER</h2>
+        <div id="overlay-sub"></div>
+        <button id="restart">もう一度</button>
+      </div>
+    </div>
+    <!-- 画面上のコントローラー: 左手=移動 / 右手=回転 -->
+    <div class="pad">
+      <div class="pad-group">
+        <div class="pad-label">移動</div>
+        <div class="pad-row">
+          <button class="btn dir" id="btn-left" aria-label="左へ移動">◀</button>
+          <button class="btn dir" id="btn-down" aria-label="下へ落とす">▼</button>
+          <button class="btn dir" id="btn-right" aria-label="右へ移動">▶</button>
+        </div>
+      </div>
+      <div class="pad-group">
+        <div class="pad-label">回転</div>
+        <div class="pad-row">
+          <button class="btn rot" id="btn-rotL" aria-label="左回転">↺</button>
+          <button class="btn rot" id="btn-rotR" aria-label="右回転">↻</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="stat">
+      <div class="label">SCORE</div>
+      <div class="value" id="score">0</div>
+    </div>
+    <div class="stat">
+      <div class="label">CHAIN</div>
+      <div class="value" id="chain">0</div>
+    </div>
+    <div class="stat">
+      <div class="label">NEXT</div>
+      <canvas class="next-box" id="next" width="96" height="136"></canvas>
+    </div>
+    <div class="speed">
+      <div class="label">落下スピード</div>
+      <div class="row">
+        <span style="font-size:12px;color:#a99fd6">遅</span>
+        <input type="range" id="speed" min="1" max="10" step="1" value="2">
+        <span style="font-size:12px;color:#a99fd6">速</span>
+        <span class="num" id="speed-num">2</span>
+      </div>
+    </div>
+    <label class="sound-toggle">
+      <input type="checkbox" id="sound" checked>
+      <span>サウンド</span>
+    </label>
+    <div class="keys">
+      <b>A/D</b> 移動<br>
+      <b>S</b> 高速落下<br>
+      <b>←</b> 左回転<br>
+      <b>→</b> 右回転
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const COLS = 6, ROWS = 12, CELL = 44;
+  const COLORS = ['#e63a2b', '#54b22e', '#2f7fd0', '#f7c01a', '#9d55d4']; // 赤緑青黄紫(本家バッジの色に合わせる)
+  const EDGE   = ['#9c1d14', '#2c7a1b', '#1a4f93', '#cf9400', '#65299c'];
+
+  // 本家ぷよぷよの公式アート風に、色ごとに「形」と「顔」を作り分けて描く
+  // 緑/青=おなじみの白い二山フェイス, 赤=怒り目, 紫=眠そうな目, 黄=しずく型
+  const SHAPE = ['blob', 'blob', 'bubble', 'drop', 'blob']; // 赤緑青黄紫
+  const FACE_KIND = ['angry', 'classic', 'classic', 'happy', 'sleepy'];
+
+  // 色ユーティリティ(白/黒と混ぜて明暗を作る)
+  function _rgb(h) {
+    h = h.replace('#', '');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function mix(a, b, t) {
+    const A = _rgb(a), B = _rgb(b);
+    return `rgb(${Math.round(A[0] + (B[0] - A[0]) * t)},${Math.round(A[1] + (B[1] - A[1]) * t)},${Math.round(A[2] + (B[2] - A[2]) * t)})`;
+  }
+  const lighten = (c, t) => mix(c, '#ffffff', t);
+  const darken = (c, t) => mix(c, '#000000', t);
+  // 色(hex か rgb(...)) を不透明度つきの rgba に変換
+  const _rgba = (c, a) => {
+    let r, g, b;
+    if (c[0] === '#') { [r, g, b] = _rgb(c); }
+    else { [r, g, b] = c.match(/\d+/g).map(Number); }
+    return `rgba(${r},${g},${b},${a})`;
+  };
+
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  const nextCanvas = document.getElementById('next');
+  const nctx = nextCanvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const chainEl = document.getElementById('chain');
+  const overlay = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlay-title');
+  const overlaySub = document.getElementById('overlay-sub');
+
+  // board[r][c] = color index, or null
+  let board, piece, nextColors, score, maxChain, gameOver;
+  let dropTimer = 0;
+  let dropInterval = 650;      // 通常落下間隔(ms) ※スライダーで変更
+  const SOFT_INTERVAL = 45;    // ↓押下中の落下間隔(ms)
+  let softDrop = false;
+
+  // 落下スピード スライダー(1=遅い 〜 10=速い)
+  const SPEED_MS = [1000, 820, 680, 560, 460, 370, 290, 220, 160, 110];
+  function applySpeed(level) {
+    const lv = Math.min(10, Math.max(1, level | 0));
+    dropInterval = SPEED_MS[lv - 1];
+  }
+
+  // 消去演出の状態
+  let phase = 'play';          // 'play' | 'clear' | 'fall'
+  let clearingList = [];       // 消去中のセル [{r,c}]
+  let clearTimer = 0;          // 消去演出の経過(ms)
+  let resolveChain = 0;        // 現在の連鎖数
+  let particles = [];          // 弾けるパーティクル
+  const CLEAR_DURATION = 480;  // 点滅〜ポップの長さ(ms)
+  let chainPopup = null;       // 連鎖数ポップ {n, t, x, y}
+  const CHAIN_POPUP_DUR = 1100;
+
+  // 落下(重力)演出の状態
+  let fallingList = [];        // 落下中のぷよ [{color,col,fromRow,toRow}]
+  let fallingTargets = null;   // 落下後に着地するセルの集合(描画でスキップ)
+  let fallTimer = 0;           // 落下演出の経過(ms)
+  let fallNext = null;         // 落下完了後に呼ぶコールバック
+  const FALL_TAME = 110;       // 落ち始める前の「ため」(ms)
+  const FALL_G = 0.0042;       // 落下加速度(行/ms^2)
+
+  // 着地時のぷるんと揺れる演出
+  let wobbleSet = new Set();    // 揺れているセル(r*COLS+c)
+  let wobbleTimer = 0;          // 揺れの経過(ms)
+  const WOBBLE_DUR = 420;       // 揺れの長さ(ms)
+
+  function startWobble(keys) {
+    wobbleSet = new Set(keys);
+    wobbleTimer = 0;
+  }
+  // 揺れ中のセルの拡大率(なければ null)。着地直後はつぶれ、減衰しながらバウンド
+  function wobbleScale(r, c) {
+    if (!wobbleSet.has(r * COLS + c)) return null;
+    const p = wobbleTimer / WOBBLE_DUR;
+    if (p >= 1) return null;
+    const env = Math.pow(1 - p, 1.7);                       // 減衰
+    const a = 0.24 * env * Math.cos(p * Math.PI * 2 * 2.2); // 数回バウンド
+    return { sx: 1 + a * 0.6, sy: 1 - a };                  // 体積保存ぎみに横伸び縦縮み
+  }
+  // セル下端中央を支点に揺れの変形をかけて描画
+  function withWobble(g, r, c, fn) {
+    const w = wobbleScale(r, c);
+    if (!w) { fn(); return; }
+    const cx = c * CELL + CELL / 2, by = r * CELL + CELL;
+    g.save();
+    g.translate(cx, by);
+    g.scale(w.sx, w.sy);
+    g.translate(-cx, -by);
+    fn();
+    g.restore();
+  }
+
+  // ---- サウンド(Web Audio で合成。ファイル不要) ----
+  let audioCtx = null;
+  let soundOn = true;
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function tone(freq, dur, type, vol, slideTo) {
+    if (!soundOn || !audioCtx) return;
+    const t0 = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.03);
+  }
+  const sMove   = () => tone(380, 0.05, 'square', 0.05);
+  const sRotate = () => tone(560, 0.06, 'square', 0.06, 680);
+  const sLand   = () => { tone(150, 0.13, 'sine', 0.16, 90); tone(300, 0.07, 'triangle', 0.05); };
+  const sDrop   = () => tone(120, 0.09, 'sine', 0.10, 80);
+  function sPop(chain) {            // 連鎖が進むほど高い音(本家風)
+    const base = 523 * Math.pow(2, Math.min(chain - 1, 12) / 12); // 半音ずつ上昇
+    tone(base, 0.20, 'triangle', 0.18, base * 1.6);
+    tone(base * 2, 0.16, 'sine', 0.07, base * 2.6);
+  }
+
+  // 子ぷよの相対位置: 0=上, 1=右, 2=下, 3=左
+  const DR = [-1, 0, 1, 0];
+  const DC = [0, 1, 0, -1];
+
+  function randColor() { return Math.floor(Math.random() * COLORS.length); }
+
+  function newPiece() {
+    const colors = nextColors || [randColor(), randColor()];
+    nextColors = [randColor(), randColor()];
+    return { row: 1, col: 2, rot: 0, axis: colors[0], child: colors[1] };
+  }
+
+  function childCell(p, rot = p.rot, row = p.row, col = p.col) {
+    return { r: row + DR[rot], c: col + DC[rot] };
+  }
+
+  function cellFree(r, c) {
+    if (c < 0 || c >= COLS || r >= ROWS) return false;
+    if (r < 0) return true; // 上方向のはみ出しは許容(出現直後)
+    return board[r][c] === null;
+  }
+
+  function valid(p, rot = p.rot, row = p.row, col = p.col) {
+    if (!cellFree(row, col)) return false;
+    const ch = childCell(p, rot, row, col);
+    return cellFree(ch.r, ch.c);
+  }
+
+  function reset() {
+    board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+    score = 0;
+    maxChain = 0;
+    gameOver = false;
+    nextColors = null;
+    piece = newPiece();
+    dropTimer = 0;
+    phase = 'play';
+    clearingList = [];
+    clearTimer = 0;
+    resolveChain = 0;
+    particles = [];
+    chainPopup = null;
+    fallingList = [];
+    fallingTargets = null;
+    fallTimer = 0;
+    fallNext = null;
+    wobbleSet = new Set();
+    wobbleTimer = 0;
+    overlay.classList.remove('show');
+    updateHUD(0);
+    drawNext();
+  }
+
+  function updateHUD(chain) {
+    scoreEl.textContent = score;
+    chainEl.textContent = chain;
+  }
+
+  // ---- 入力 ----
+  function move(dir) {
+    if (gameOver || !piece) return;
+    if (valid(piece, piece.rot, piece.row, piece.col + dir)) {
+      piece.col += dir;
+      sMove();
+    }
+  }
+
+  function rotate(dir) { // dir: +1=右回転, -1=左回転
+    if (gameOver || !piece) return;
+    const newRot = (piece.rot + (dir > 0 ? 1 : 3)) % 4;
+    // 壁蹴り候補: そのまま→左→右→上→下
+    const kicks = [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0]];
+    for (const [dr, dc] of kicks) {
+      if (valid(piece, newRot, piece.row + dr, piece.col + dc)) {
+        piece.rot = newRot;
+        piece.row += dr;
+        piece.col += dc;
+        sRotate();
+        return;
+      }
+    }
+  }
+
+  function stepDown() {
+    if (valid(piece, piece.rot, piece.row + 1, piece.col)) {
+      piece.row += 1;
+      return true;
+    }
+    return false;
+  }
+
+  function lockPiece() {
+    const ch = childCell(piece);
+    const lockedKeys = [];
+    if (piece.row >= 0) lockedKeys.push(piece.row * COLS + piece.col);
+    if (ch.r >= 0) lockedKeys.push(ch.r * COLS + ch.c);
+    // 盤面に固定(上にはみ出した分はゲームオーバー判定で扱う)
+    placeCell(piece.row, piece.col, piece.axis);
+    placeCell(ch.r, ch.c, piece.child);
+    piece = null;
+    sLand();
+    if (gameOver) { endGame(); return; }
+    beginResolve(lockedKeys);
+  }
+
+  function placeCell(r, c, color) {
+    if (r < 0) { gameOver = true; return; }
+    board[r][c] = color;
+  }
+
+  // ---- 連鎖処理 ----
+  function applyGravity() {
+    for (let c = 0; c < COLS; c++) {
+      let write = ROWS - 1;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (board[r][c] !== null) {
+          const v = board[r][c];
+          board[r][c] = null;
+          board[write][c] = v;
+          write--;
+        }
+      }
+    }
+  }
+
+  // 重力で動くぷよを算出(盤面はまだ動かさない)。
+  // 返り値: 落下するぷよの一覧。動くものが無ければ空配列
+  function computeFalls() {
+    const falls = [];
+    for (let c = 0; c < COLS; c++) {
+      let write = ROWS - 1;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (board[r][c] !== null) {
+          if (write !== r) {
+            falls.push({ color: board[r][c], col: c, fromRow: r, toRow: write });
+          }
+          write--;
+        }
+      }
+    }
+    return falls;
+  }
+
+  // 落下演出を開始。動くものが無ければ即 next() を呼ぶ
+  // restCells: 落下が無いとき揺らす(着地済み)セルのキー配列
+  function beginFall(next, restCells) {
+    const falls = computeFalls();
+    if (falls.length === 0) {
+      if (restCells && restCells.length) startWobble(restCells);
+      next();
+      return;
+    }
+    applyGravity();                 // 盤面は最終形に確定
+    fallingList = falls;
+    fallingTargets = new Set();
+    for (const f of falls) fallingTargets.add(f.toRow * COLS + f.col);
+    fallTimer = 0;
+    fallNext = next;
+    phase = 'fall';                 // ← この間は落下アニメ(入力停止)
+  }
+
+  // 落下アニメの1フレーム。全ぷよが着地したら完了
+  function updateFall(dt) {
+    fallTimer += dt;
+    const t = Math.max(0, fallTimer - FALL_TAME);   // 「ため」のあとに落下開始
+    const dist = 0.5 * FALL_G * t * t;              // 落下した行数
+    let done = true;
+    for (const f of fallingList) {
+      const span = f.toRow - f.fromRow;
+      f.cur = Math.min(f.toRow, f.fromRow + dist);
+      if (dist < span) done = false;
+    }
+    if (done) {
+      const landed = [...fallingTargets];
+      fallingList = [];
+      fallingTargets = null;
+      startWobble(landed);          // 着地でぷるんと揺れる
+      sDrop();
+      const cb = fallNext; fallNext = null;
+      phase = 'clear-pending';      // 一時的: 次処理へ
+      if (cb) cb();
+    }
+  }
+
+  // 消去対象(同色4つ以上つながり)のセルを集める。盤面はまだ消さない
+  function findClearCells() {
+    const seen = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    const result = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (board[r][c] === null || seen[r][c]) continue;
+        const color = board[r][c];
+        const stack = [[r, c]];
+        const group = [];
+        seen[r][c] = true;
+        while (stack.length) {
+          const [cr, cc] = stack.pop();
+          group.push([cr, cc]);
+          for (let d = 0; d < 4; d++) {
+            const nr = cr + DR[d], nc = cc + DC[d];
+            if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+            if (seen[nr][nc] || board[nr][nc] !== color) continue;
+            seen[nr][nc] = true;
+            stack.push([nr, nc]);
+          }
+        }
+        if (group.length >= 4) {
+          for (const [gr, gc] of group) result.push({ r: gr, c: gc });
+        }
+      }
+    }
+    return result;
+  }
+
+  // 連鎖処理の開始。重力 → 消去判定。消えるものがあれば演出フェーズへ
+  function beginResolve(restKeys) {
+    resolveChain = 0;
+    beginFall(() => nextClearStep(), restKeys);   // まず重力で落とす(ためて落ちる演出)
+  }
+
+  function nextClearStep() {
+    const cells = findClearCells();
+    if (cells.length === 0) {
+      // 連鎖終了
+      maxChain = Math.max(maxChain, resolveChain);
+      updateHUD(resolveChain);
+      phase = 'play';
+      spawnNext();
+      return;
+    }
+    resolveChain++;
+    chainEl.textContent = resolveChain;   // 連鎖数を即時表示
+    clearingList = cells;
+    clearTimer = 0;
+    phase = 'clear';                       // ← この間は点滅演出(入力停止)
+  }
+
+  // 演出が終わったら実際に消す→スコア加算→重力→次の連鎖判定
+  function finishClearStep() {
+    const n = clearingList.length;
+    const chainBonus = resolveChain === 1 ? 1 : (1 << (resolveChain - 1));
+    score += n * 10 * chainBonus;
+    scoreEl.textContent = score;
+    sPop(resolveChain);                  // 消える音(連鎖で高くなる)
+    // 連鎖ポップの位置(消去セルの重心)を算出
+    let sx = 0, sy = 0;
+    for (const { r, c } of clearingList) { sx += c; sy += r; }
+    const cx = (sx / clearingList.length + 0.5) * CELL;
+    const cy = (sy / clearingList.length + 0.5) * CELL;
+    if (resolveChain >= 2) {
+      chainPopup = { n: resolveChain, t: 0, x: cx, y: cy };
+    }
+    for (const { r, c } of clearingList) {
+      emitPop(r, c, board[r][c]);          // 弾けるパーティクル
+      board[r][c] = null;
+    }
+    clearingList = [];
+    beginFall(() => nextClearStep());   // 消えた後の落下も「ためて落ちる」
+  }
+
+  // ---- パーティクル(消える瞬間の演出) ----
+  function emitPop(r, c, colorIdx) {
+    const cx = c * CELL + CELL / 2, cy = r * CELL + CELL / 2;
+    const n = 7;
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i / n) + Math.random() * 0.6;
+      const sp = 1.4 + Math.random() * 2.4;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 1.2,
+        life: 1,
+        size: 2 + Math.random() * 2.5,
+        color: Math.random() < 0.45 ? '#fff' : COLORS[colorIdx],
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    const f = dt / 16;
+    for (const p of particles) {
+      p.x += p.vx * f;
+      p.y += p.vy * f;
+      p.vy += 0.2 * f;     // 重力
+      p.life -= 0.05 * f;
+    }
+    particles = particles.filter((p) => p.life > 0);
+  }
+
+  function drawParticles(g) {
+    for (const p of particles) {
+      g.save();
+      g.globalAlpha = Math.max(0, p.life);
+      g.beginPath();
+      g.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      g.fillStyle = p.color;
+      g.fill();
+      g.restore();
+    }
+  }
+
+  function spawnNext() {
+    piece = newPiece();
+    // 出現位置が埋まっていたらゲームオーバー
+    if (!valid(piece)) {
+      gameOver = true;
+      endGame();
+    }
+    drawNext();
+  }
+
+  function endGame() {
+    piece = null;
+    overlayTitle.textContent = 'GAME OVER';
+    overlaySub.textContent = `スコア ${score} / 最大 ${maxChain} 連鎖`;
+    overlay.classList.add('show');
+  }
+
+  // ---- 描画 ----
+
+  // ---- ぷよ本体の形（色ごとに違うシルエット） ----
+  function bodyPath(g, type, cx, cy, R) {
+    g.beginPath();
+    if (type === 'drop') {
+      // しずく型（上がとがる）= 黄
+      const top = cy - R * 1.42;
+      g.moveTo(cx, top);
+      g.bezierCurveTo(cx + R * 0.50, top + R * 0.78, cx + R * 1.02, cy - R * 0.18, cx + R * 1.02, cy + R * 0.20);
+      g.bezierCurveTo(cx + R * 1.02, cy + R * 1.02, cx + R * 0.56, cy + R * 1.18, cx, cy + R * 1.18);
+      g.bezierCurveTo(cx - R * 0.56, cy + R * 1.18, cx - R * 1.02, cy + R * 1.02, cx - R * 1.02, cy + R * 0.20);
+      g.bezierCurveTo(cx - R * 1.02, cy - R * 0.18, cx - R * 0.50, top + R * 0.78, cx, top);
+    } else if (type === 'bubble') {
+      // 吹き出し型（右下にしっぽ）= 青
+      g.moveTo(cx - R, cy);
+      g.bezierCurveTo(cx - R, cy - R * 1.28, cx + R, cy - R * 1.28, cx + R, cy);
+      g.bezierCurveTo(cx + R, cy + R * 0.44, cx + R * 0.92, cy + R * 0.70, cx + R * 0.70, cy + R * 0.86);
+      g.lineTo(cx + R * 1.06, cy + R * 1.30);            // しっぽの先
+      g.bezierCurveTo(cx + R * 0.48, cy + R * 1.06, cx + R * 0.20, cy + R * 1.02, cx - R * 0.02, cy + R * 1.0);
+      g.bezierCurveTo(cx - R * 0.60, cy + R * 0.96, cx - R, cy + R * 0.52, cx - R, cy);
+    } else {
+      // ぷよ型の丸い体＋下に小さな足2つ = 赤/緑/紫
+      g.moveTo(cx - R, cy);
+      g.bezierCurveTo(cx - R, cy - R * 1.28, cx + R, cy - R * 1.28, cx + R, cy);
+      g.bezierCurveTo(cx + R, cy + R * 0.56, cx + R * 0.96, cy + R * 0.82, cx + R * 0.56, cy + R * 0.94);
+      g.bezierCurveTo(cx + R * 0.80, cy + R * 1.08, cx + R * 0.50, cy + R * 1.16, cx + R * 0.30, cy + R * 0.98);
+      g.bezierCurveTo(cx + R * 0.13, cy + R * 0.90, cx - R * 0.13, cy + R * 0.90, cx - R * 0.30, cy + R * 0.98);
+      g.bezierCurveTo(cx - R * 0.50, cy + R * 1.16, cx - R * 0.80, cy + R * 1.08, cx - R * 0.56, cy + R * 0.94);
+      g.bezierCurveTo(cx - R * 0.96, cy + R * 0.82, cx - R, cy + R * 0.56, cx - R, cy);
+    }
+    g.closePath();
+  }
+
+  // 公式の「白い炎型の目」を左右に1対描く（緑・青・黄のおなじみフェイス）
+  // sep=中心からの距離, w=半幅, h=高さ, by=底のy, flick=上端が外へ跳ねる量
+  // 黒目（瞳）を必ず入れて「目がある」印象にする
+  function whiteEyes(g, cx, ey, R, sep, w, h, by, flick) {
+    for (const s of [-1, 1]) {
+      const dx = cx + s * sep;
+      const topY = by - h;
+      const ptX = dx + s * flick;            // 上端（外側へ跳ねる）
+      g.beginPath();
+      g.moveTo(dx - s * w * 0.45, by - h * 0.04);                          // 内側の底
+      g.bezierCurveTo(dx - s * w * 0.15, by + h * 0.14,                    // 底をまわって
+                      dx + s * w * 0.85, by + h * 0.06,
+                      dx + s * w * 1.02, by - h * 0.30);                   // 外側のふくらみ
+      g.bezierCurveTo(dx + s * w * 1.04, topY + h * 0.34,                  // 外側を上へ
+                      dx + s * (w * 0.46 + flick), topY - h * 0.02,
+                      ptX, topY);                                          // 先端へ
+      g.bezierCurveTo(dx - s * w * 0.16, topY + h * 0.16,                  // 内側を下る
+                      dx - s * w * 0.58, by - h * 0.52,
+                      dx - s * w * 0.45, by - h * 0.04);
+      g.closePath();
+      g.fillStyle = '#fff';
+      g.fill();
+      g.lineWidth = R * 0.045;
+      g.strokeStyle = 'rgba(20,40,60,0.22)';
+      g.stroke();
+
+      // 黒目（瞳）— 白目の下のほう・やや内寄りに置く
+      const pr = w * 0.46;                       // 瞳の半径
+      const px = dx + s * w * 0.04;              // ほんの少し内側
+      const py = by - h * 0.30;                  // 下寄り
+      g.beginPath();
+      g.ellipse(px, py, pr, pr * 1.12, 0, 0, Math.PI * 2);
+      g.fillStyle = '#241c28';
+      g.fill();
+      // キャッチライト（白い反射）
+      g.beginPath();
+      g.arc(px - s * pr * 0.34, py - pr * 0.42, pr * 0.34, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(255,255,255,0.95)';
+      g.fill();
+    }
+  }
+
+  // 顔（公式アート風の表情）
+  function drawFaceKind(g, kind, cx, cy, R, colorIdx) {
+    const ey = cy - R * 0.04;
+    const dark = darken(COLORS[colorIdx], 0.55);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+
+    if (kind === 'classic') {
+      // 緑・青: 大きく背の高い炎型の白目（先端が外へ跳ねる）
+      whiteEyes(g, cx, ey, R, R * 0.44, R * 0.40, R * 0.96, cy + R * 0.42, R * 0.20);
+      return;
+    }
+
+    if (kind === 'happy') {
+      // 黄: 丸めで少し低い白目（かわいい印象）
+      whiteEyes(g, cx, ey, R, R * 0.40, R * 0.40, R * 0.74, cy + R * 0.30, R * 0.06);
+      return;
+    }
+
+    if (kind === 'angry') {
+      // 赤: 白目＋黒目のちゃんとした目に、つり上がった眉で「怒り」を表現
+      const off = R * 0.46;
+      const eyc = ey + R * 0.12;
+      for (const s of [-1, 1]) {
+        const ex = cx + s * off;
+        // 白目（縦長のたまご型）
+        g.beginPath();
+        g.ellipse(ex, eyc, R * 0.30, R * 0.40, 0, 0, Math.PI * 2);
+        g.fillStyle = '#fff';
+        g.fill();
+        g.lineWidth = R * 0.045;
+        g.strokeStyle = 'rgba(20,40,60,0.22)';
+        g.stroke();
+        // 黒目（内寄り・下寄りで にらむ感じ）
+        const px = ex - s * R * 0.05, py = eyc + R * 0.08;
+        g.beginPath();
+        g.ellipse(px, py, R * 0.16, R * 0.19, 0, 0, Math.PI * 2);
+        g.fillStyle = '#241c28';
+        g.fill();
+        g.beginPath();
+        g.arc(px - s * R * 0.06, py - R * 0.08, R * 0.06, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(255,255,255,0.95)';
+        g.fill();
+        // つり上がった眉（怒り）
+        g.beginPath();
+        g.moveTo(ex - s * R * 0.30, eyc - R * 0.36);
+        g.lineTo(ex + s * R * 0.30, eyc - R * 0.62);
+        g.lineWidth = R * 0.16;
+        g.strokeStyle = dark;
+        g.lineCap = 'round';
+        g.stroke();
+      }
+      return;
+    }
+
+    if (kind === 'sleepy') {
+      // 紫: 眠そうな半目（重く垂れたまぶた＋下からのぞく目）
+      const off = R * 0.42;
+      for (const s of [-1, 1]) {
+        const ex = cx + s * off;
+        const eyc = ey + R * 0.18;
+        // 白目
+        g.beginPath();
+        g.ellipse(ex, eyc, R * 0.34, R * 0.32, 0, 0, Math.PI * 2);
+        g.fillStyle = '#fff';
+        g.fill();
+        // 黒目（下寄り）
+        g.beginPath();
+        g.arc(ex, eyc + R * 0.10, R * 0.16, 0, Math.PI * 2);
+        g.fillStyle = dark;
+        g.fill();
+        g.beginPath();
+        g.arc(ex - R * 0.05, eyc + R * 0.03, R * 0.05, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(255,255,255,0.92)';
+        g.fill();
+        // 重いまぶた（外側が下がる＝眠そう）。目の上2/3を覆う
+        const innerX = ex - s * R * 0.42, outerX = ex + s * R * 0.42;
+        const innerY = eyc - R * 0.06, outerY = eyc + R * 0.13;
+        g.beginPath();
+        g.moveTo(innerX, innerY);
+        g.bezierCurveTo(innerX, eyc - R * 0.42, outerX, eyc - R * 0.42, outerX, outerY);
+        g.quadraticCurveTo(ex, eyc + R * 0.02, innerX, innerY);
+        g.closePath();
+        g.fillStyle = darken(COLORS[colorIdx], 0.32);
+        g.fill();
+      }
+      return;
+    }
+  }
+
+  // ぷよ1個をツヤツヤに描く（色ごとに形・顔が変わる）
+  function drawPuyoChar(g, x, y, colorIdx) {
+    const cx = x + CELL / 2;
+    const cy = y + CELL * 0.50;
+    const R = CELL * 0.40;
+    const type = SHAPE[colorIdx];
+
+    // 本体（放射グラデで球のツヤ）＋落ち影
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,0.28)';
+    g.shadowBlur = CELL * 0.13;
+    g.shadowOffsetY = CELL * 0.07;
+    bodyPath(g, type, cx, cy, R);
+    // 光源を左上に置いた放射グラデ：中心が明るく、外周ほど濃くして球の丸みを強調
+    const grad = g.createRadialGradient(cx - R * 0.40, cy - R * 0.54, R * 0.06, cx - R * 0.04, cy + R * 0.18, R * 1.42);
+    grad.addColorStop(0,    lighten(COLORS[colorIdx], 0.72));
+    grad.addColorStop(0.30, lighten(COLORS[colorIdx], 0.18));
+    grad.addColorStop(0.62, COLORS[colorIdx]);
+    grad.addColorStop(0.86, darken(EDGE[colorIdx], 0.04));
+    grad.addColorStop(1,    darken(EDGE[colorIdx], 0.22));
+    g.fillStyle = grad;
+    g.fill();
+    g.restore();
+
+    // ハイライト類（本体内にクリップ）
+    g.save();
+    bodyPath(g, type, cx, cy, R);
+    g.clip();
+
+    // 内側のリム影（外周をぐるりと暗くして“球”の立体感を出す）
+    const rim = g.createRadialGradient(cx, cy + R * 0.06, R * 0.62, cx, cy + R * 0.06, R * 1.12);
+    rim.addColorStop(0, 'rgba(0,0,0,0)');
+    rim.addColorStop(0.78, 'rgba(0,0,0,0)');
+    rim.addColorStop(1, 'rgba(0,0,0,0.30)');
+    g.fillStyle = rim;
+    g.fillRect(cx - R * 1.6, cy - R * 1.6, R * 3.2, R * 3.2);
+
+    // 下からの照り返し（色味のサブサーフェス光）でぷるんと感
+    g.beginPath();
+    g.ellipse(cx, cy + R * 0.66, R * 0.70, R * 0.40, 0, 0, Math.PI * 2);
+    const sss = g.createRadialGradient(cx, cy + R * 0.66, R * 0.04, cx, cy + R * 0.66, R * 0.72);
+    sss.addColorStop(0, _rgba(lighten(COLORS[colorIdx], 0.55), 0.55));
+    sss.addColorStop(1, _rgba(lighten(COLORS[colorIdx], 0.55), 0));
+    g.fillStyle = sss;
+    g.fill();
+
+    // 大きな上のツヤ（やわらかいグロス帯）
+    g.beginPath();
+    g.ellipse(cx - R * 0.28, cy - R * 0.50, R * 0.56, R * 0.40, -0.5, 0, Math.PI * 2);
+    const gloss = g.createRadialGradient(cx - R * 0.34, cy - R * 0.58, R * 0.04, cx - R * 0.28, cy - R * 0.50, R * 0.58);
+    gloss.addColorStop(0, 'rgba(255,255,255,0.85)');
+    gloss.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gloss;
+    g.fill();
+
+    // 鋭いスペキュラの点（つやの芯）
+    g.beginPath();
+    g.ellipse(cx - R * 0.44, cy - R * 0.62, R * 0.17, R * 0.12, -0.4, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.98)';
+    g.fill();
+    // 小さな2つ目のキラリ
+    g.beginPath();
+    g.ellipse(cx - R * 0.12, cy - R * 0.40, R * 0.07, R * 0.05, -0.4, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.fill();
+
+    g.restore();
+
+    // 輪郭
+    bodyPath(g, type, cx, cy, R);
+    g.lineWidth = CELL * 0.03;
+    g.strokeStyle = darken(EDGE[colorIdx], 0.12);
+    g.stroke();
+
+    // 顔
+    drawFaceKind(g, FACE_KIND[colorIdx], cx, cy, R, colorIdx);
+  }
+
+  // ぷよを描く(本家アート風の手描き)
+  function drawPuyo(g, x, y, colorIdx) {
+    drawPuyoChar(g, x, y, colorIdx);
+  }
+
+  function roundRectPath(g, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+
+  // 同色のぷよ本体色の縦グラデ(上が明るく下が暗い、スプライトの陰影に合わせる)
+  function bodyGrad(g, col, top, bottom) {
+    const grad = g.createLinearGradient(0, top, 0, bottom);
+    grad.addColorStop(0, lighten(COLORS[col], 0.34));
+    grad.addColorStop(0.5, COLORS[col]);
+    grad.addColorStop(1, EDGE[col]);
+    return grad;
+  }
+
+  // 隣り合う同色ぷよの「すき間」を本体色で埋めて、くっついて見せる(スプライトの下に描く)
+  function drawConnectors(g, colorAt) {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const col = colorAt(r, c);
+        if (col === null || col === undefined) continue;
+        // 右隣
+        if (c + 1 < COLS && colorAt(r, c + 1) === col) {
+          const cx = (c + 1) * CELL, cy = (r + 0.5) * CELL;
+          const w = CELL * 0.92, h = CELL * 0.66;
+          g.fillStyle = bodyGrad(g, col, cy - h / 2, cy + h / 2);
+          roundRectPath(g, cx - w / 2, cy - h / 2, w, h, CELL * 0.2);
+          g.fill();
+        }
+        // 下隣
+        if (r + 1 < ROWS && colorAt(r + 1, c) === col) {
+          const cx = (c + 0.5) * CELL, cy = (r + 1) * CELL;
+          const w = CELL * 0.66, h = CELL * 0.92;
+          g.fillStyle = bodyGrad(g, col, cy - h / 2, cy + h / 2);
+          roundRectPath(g, cx - w / 2, cy - h / 2, w, h, CELL * 0.2);
+          g.fill();
+        }
+      }
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // グリッド線
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1;
+    for (let c = 1; c < COLS; c++) {
+      ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, canvas.height); ctx.stroke();
+    }
+    for (let r = 1; r < ROWS; r++) {
+      ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(canvas.width, r * CELL); ctx.stroke();
+    }
+    // ポップ(縮小)中の消去セルは色付き body を隠し、白いポップだけ見せる
+    const popping = phase === 'clear' && clearTimer >= CLEAR_DURATION - 130;
+    const popSet = new Set();
+    if (popping) for (const { r, c } of clearingList) popSet.add(r * COLS + c);
+    // 落下中は着地予定セルを盤面から隠し、落下ぷよを別途描く
+    const falling = phase === 'fall' && fallingTargets;
+    const hidden = (r, c) =>
+      (popping && popSet.has(r * COLS + c)) ||
+      (falling && fallingTargets.has(r * COLS + c));
+
+    // 操作中ぷよを盤面に重ねた「色マップ」。これで同色判定して連結を描く
+    const overlayCells = {};
+    if (phase === 'play' && piece) {
+      if (piece.row >= 0) overlayCells[piece.row * COLS + piece.col] = piece.axis;
+      const chc = childCell(piece);
+      if (chc.r >= 0) overlayCells[chc.r * COLS + chc.c] = piece.child;
+    }
+    const colorAt = (r, c) => {
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+      const k = r * COLS + c;
+      if (k in overlayCells) return overlayCells[k];
+      if (hidden(r, c)) return null;
+      return board[r][c];
+    };
+    // 同色の連結部分を先に塗る(スプライトの下地になる)
+    drawConnectors(ctx, colorAt);
+
+    // 固定ぷよ: 3Dモデル画像で描画(着地の揺れを反映)
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const col = board[r][c];
+        if (col === null || hidden(r, c)) continue;
+        withWobble(ctx, r, c, () => drawPuyo(ctx, c * CELL, r * CELL, col));
+      }
+    }
+    // 消去演出: 対象ぷよを白く点滅 → 終盤はポップ(縮小)
+    if (phase === 'clear') {
+      const t = clearTimer;
+      const popStart = CLEAR_DURATION - 130;
+      for (const { r, c } of clearingList) {
+        const x = c * CELL, y = r * CELL;
+        if (t < popStart) {
+          // 点滅(白くフラッシュ)。終盤ほど点滅を速く
+          const speed = t > popStart - 160 ? 45 : 80;
+          if (Math.floor(t / speed) % 2 === 1) {
+            ctx.save();
+            ctx.globalAlpha = 0.55;
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.beginPath();
+            ctx.arc(x + CELL / 2, y + CELL / 2, CELL * 0.46, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.restore();
+          }
+        } else {
+          // ポップ: 白い円が縮みながら消える
+          const p = (t - popStart) / 130; // 0..1
+          ctx.save();
+          ctx.globalAlpha = 1 - p;
+          ctx.beginPath();
+          ctx.arc(x + CELL / 2, y + CELL / 2, Math.max(0, CELL * 0.44 * (1 - p)), 0, Math.PI * 2);
+          ctx.fillStyle = '#fff';
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+
+    // 落下(重力)アニメ中のぷよ: 補間位置に独立して描く
+    if (falling) {
+      for (const f of fallingList) {
+        const yr = (f.cur === undefined ? f.fromRow : f.cur);
+        drawPuyo(ctx, f.col * CELL, yr * CELL, f.color);
+      }
+    }
+
+    // 操作中のぷよ(落下中は独立して表示)
+    if (piece) {
+      if (piece.row >= 0) {
+        drawPuyo(ctx, piece.col * CELL, piece.row * CELL, piece.axis);
+      }
+      const ch = childCell(piece);
+      if (ch.r >= 0) {
+        drawPuyo(ctx, ch.c * CELL, ch.r * CELL, piece.child);
+      }
+    }
+
+    // パーティクル(消える瞬間のキラッと弾ける演出)
+    drawParticles(ctx);
+
+    // 連鎖カウント演出
+    drawChainPopup(ctx);
+  }
+
+  // 連鎖数のポップ表示(本家風に「N連鎖!」が弾んで浮かび上がる)
+  const CHAIN_HUES = ['#ffe14a', '#ffb24a', '#ff7a4a', '#ff4a8c', '#c46bff', '#5a9bff'];
+  function drawChainPopup(g) {
+    if (!chainPopup) return;
+    const p = chainPopup.t / CHAIN_POPUP_DUR;       // 0..1
+    // 出だしは弾むように拡大、終盤で上に浮きながらフェード
+    const pop = p < 0.25
+      ? 1.25 * (1 - Math.pow(1 - p / 0.25, 3))      // ぴょこっと拡大(オーバーシュート気味)
+      : 1.25 - 0.08 * Math.sin((p - 0.25) / 0.75 * Math.PI);
+    const rise = p < 0.25 ? 0 : -(p - 0.25) / 0.75 * (CELL * 0.9);
+    const alpha = p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3);
+    const x = Math.max(CELL * 0.9, Math.min(canvas.width - CELL * 0.9, chainPopup.x));
+    const y = chainPopup.y + rise;
+    const col = CHAIN_HUES[Math.min(chainPopup.n - 2, CHAIN_HUES.length - 1)];
+
+    g.save();
+    g.globalAlpha = alpha;
+    g.translate(x, y);
+    g.scale(pop, pop);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = 'bold 30px "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif';
+    // 数字を大きく、「連鎖」を小さく
+    const num = String(chainPopup.n);
+    g.font = 'bold 38px "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif';
+    const numW = g.measureText(num).width;
+    g.font = 'bold 20px "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif';
+    const tailW = g.measureText('連鎖').width;
+    const total = numW + 4 + tailW;
+    const startX = -total / 2;
+
+    // 影
+    g.lineJoin = 'round';
+    // 数字
+    g.font = 'bold 38px "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif';
+    g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.55)';
+    g.fillStyle = col;
+    g.textAlign = 'left';
+    g.strokeText(num, startX, 0);
+    g.fillText(num, startX, 0);
+    // 「連鎖」
+    g.font = 'bold 20px "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif';
+    g.lineWidth = 5;
+    g.fillStyle = '#fff';
+    g.strokeText('連鎖', startX + numW + 4, 3);
+    g.fillText('連鎖', startX + numW + 4, 3);
+    g.restore();
+  }
+
+  function drawNext() {
+    nctx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+    if (!nextColors) return;
+    const x = (nextCanvas.width - CELL) / 2;
+    // 同色なら連結部分を先に塗る
+    if (nextColors[0] === nextColors[1]) {
+      const cx = x + CELL / 2, cy = 8 + CELL;
+      const w = CELL * 0.66, h = CELL * 0.92;
+      nctx.fillStyle = bodyGrad(nctx, nextColors[0], cy - h / 2, cy + h / 2);
+      roundRectPath(nctx, cx - w / 2, cy - h / 2, w, h, CELL * 0.2);
+      nctx.fill();
+    }
+    drawPuyo(nctx, x, 8, nextColors[0]);
+    drawPuyo(nctx, x, 8 + CELL, nextColors[1]);
+  }
+
+  // ---- ループ ----
+  let last = performance.now();
+  function loop(now) {
+    const dt = now - last;
+    last = now;
+    if (!gameOver) {
+      if (phase === 'play' && piece) {
+        dropTimer += dt;
+        const interval = softDrop ? SOFT_INTERVAL : dropInterval;
+        if (dropTimer >= interval) {
+          dropTimer = 0;
+          if (!stepDown()) {
+            lockPiece();
+          }
+        }
+      } else if (phase === 'fall') {
+        updateFall(dt);
+      } else if (phase === 'clear') {
+        clearTimer += dt;
+        if (clearTimer >= CLEAR_DURATION) {
+          finishClearStep();
+        }
+      }
+    }
+    updateParticles(dt);
+    if (wobbleSet.size) {
+      wobbleTimer += dt;
+      if (wobbleTimer >= WOBBLE_DUR) wobbleSet = new Set();
+    }
+    if (chainPopup) {
+      chainPopup.t += dt;
+      if (chainPopup.t >= CHAIN_POPUP_DUR) chainPopup = null;
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---- キー ----
+  document.addEventListener('keydown', (e) => {
+    ensureAudio();   // 最初のキー操作で音声を有効化(自動再生制限の解除)
+    if (gameOver) return;
+    switch (e.key) {
+      case 'a': case 'A':  move(-1); e.preventDefault(); break;   // A=左
+      case 'd': case 'D':  move(1);  e.preventDefault(); break;   // D=右
+      case 's': case 'S':  softDrop = true; e.preventDefault(); break; // S=落下
+      case 'ArrowLeft':    rotate(-1); e.preventDefault(); break; // ←=左回転
+      case 'ArrowRight':   rotate(1);  e.preventDefault(); break; // →=右回転
+    }
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 's' || e.key === 'S') { softDrop = false; dropTimer = 0; }
+  });
+  document.getElementById('restart').addEventListener('click', reset);
+
+  // ---- 画面上コントローラー(左手=移動 / 右手=回転) ----
+  function bindPress(id, onDown, onUp, repeat) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let timer = null;
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } if (onUp) onUp(); };
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      ensureAudio();
+      if (gameOver) return;
+      onDown();
+      if (repeat) timer = setInterval(onDown, 110);
+    });
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointerleave', stop);
+    el.addEventListener('pointercancel', stop);
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+  bindPress('btn-left',  () => move(-1), null, true);
+  bindPress('btn-right', () => move(1),  null, true);
+  bindPress('btn-down',  () => { softDrop = true; }, () => { softDrop = false; dropTimer = 0; }, false);
+  bindPress('btn-rotL',  () => rotate(-1), null, false);
+  bindPress('btn-rotR',  () => rotate(1),  null, false);
+
+  // 落下スピード スライダー
+  const speedInput = document.getElementById('speed');
+  const speedNum = document.getElementById('speed-num');
+  applySpeed(parseInt(speedInput.value, 10));
+  speedInput.addEventListener('input', () => {
+    const lv = parseInt(speedInput.value, 10);
+    applySpeed(lv);
+    speedNum.textContent = lv;
+  });
+
+  // サウンド ON/OFF
+  const soundInput = document.getElementById('sound');
+  soundInput.addEventListener('change', () => {
+    soundOn = soundInput.checked;
+    if (soundOn) { ensureAudio(); sMove(); }   // ONにした合図
+  });
+
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
