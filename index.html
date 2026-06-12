@@ -231,7 +231,7 @@
 
   // 本家ぷよぷよの公式アート風に、色ごとに「形」と「顔」を作り分けて描く
   // 緑/青=おなじみの白い二山フェイス, 赤=怒り目, 紫=眠そうな目, 黄=しずく型
-  const SHAPE = ['blob', 'blob', 'bubble', 'drop', 'blob']; // 赤緑青黄紫
+  const SHAPE = ['blob', 'horns', 'bubble', 'drop', 'blob']; // 赤緑青黄紫(緑はツノ2本で赤と区別)
   const FACE_KIND = ['angry', 'classic', 'classic', 'happy', 'sleepy'];
 
   // 色ユーティリティ(白/黒と混ぜて明暗を作る)
@@ -861,6 +861,23 @@
       g.bezierCurveTo(cx + R * 1.02, cy + R * 1.02, cx + R * 0.56, cy + R * 1.18, cx, cy + R * 1.18);
       g.bezierCurveTo(cx - R * 0.56, cy + R * 1.18, cx - R * 1.02, cy + R * 1.02, cx - R * 1.02, cy + R * 0.20);
       g.bezierCurveTo(cx - R * 1.02, cy - R * 0.18, cx - R * 0.50, top + R * 0.78, cx, top);
+    } else if (type === 'horns') {
+      // 上に2本のツノが生えた形(本家の緑ぷよ風) = 緑
+      g.moveTo(cx - R, cy);
+      // 左外周 → 左ツノの先端
+      g.bezierCurveTo(cx - R * 1.0, cy - R * 0.62, cx - R * 0.88, cy - R * 0.96, cx - R * 0.52, cy - R * 1.50);
+      // 先端 → 中央の谷
+      g.bezierCurveTo(cx - R * 0.40, cy - R * 1.16, cx - R * 0.24, cy - R * 1.02, cx, cy - R * 1.00);
+      // 谷 → 右ツノの先端
+      g.bezierCurveTo(cx + R * 0.24, cy - R * 1.02, cx + R * 0.40, cy - R * 1.16, cx + R * 0.52, cy - R * 1.50);
+      // 先端 → 右外周
+      g.bezierCurveTo(cx + R * 0.88, cy - R * 0.96, cx + R * 1.0, cy - R * 0.62, cx + R, cy);
+      // 下まわりは blob と同じ(足2つ)
+      g.bezierCurveTo(cx + R, cy + R * 0.56, cx + R * 0.96, cy + R * 0.82, cx + R * 0.56, cy + R * 0.94);
+      g.bezierCurveTo(cx + R * 0.80, cy + R * 1.08, cx + R * 0.50, cy + R * 1.16, cx + R * 0.30, cy + R * 0.98);
+      g.bezierCurveTo(cx + R * 0.13, cy + R * 0.90, cx - R * 0.13, cy + R * 0.90, cx - R * 0.30, cy + R * 0.98);
+      g.bezierCurveTo(cx - R * 0.50, cy + R * 1.16, cx - R * 0.80, cy + R * 1.08, cx - R * 0.56, cy + R * 0.94);
+      g.bezierCurveTo(cx - R * 0.96, cy + R * 0.82, cx - R, cy + R * 0.56, cx - R, cy);
     } else if (type === 'bubble') {
       // 吹き出し型（右下にしっぽ）= 青
       g.moveTo(cx - R, cy);
