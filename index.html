@@ -293,6 +293,11 @@
   let shakeT = 0, shakeMag = 0;// 画面シェイク(残り時間ms / 強さpx)
   let flash = null;            // 画面フラッシュ {t,dur,alpha,hue}
   let chargeX = 0, chargeY = 0, chargeHue = '#fff'; // 「溜め」演出の中心と色
+  // 全消し(本家準拠: 達成すると次の消去にお邪魔ぷよ30個分=2100点を上乗せ)
+  const ZENKESHI_BONUS = 2100;
+  const ZENKESHI_FX_DUR = 1800;
+  let zenkeshiPending = false;  // ボーナス未消化フラグ
+  let zenkeshiFx = null;        // 「ぜんけし」バナー {t}
 
   // 落下(重力)演出の状態
   let fallingList = [];        // 落下中のぷよ [{color,col,fromRow,toRow}]
@@ -410,6 +415,11 @@
     // さらに高音の「キラッ」(きらめき)
     tone(base * 3, 0.12, 'triangle', 0.05, base * 3 * 1.25, 0.10);
   }
+  function sZenkeshi() {            // 全消しのファンファーレ(上昇アルペジオ+キラーン)
+    const seq = [523, 659, 784, 1047, 1319];   // C-E-G-C-E
+    seq.forEach((f, i) => tone(f, 0.2, 'triangle', 0.12, f * 1.02, i * 0.09));
+    tone(2093, 0.5, 'sine', 0.07, 2300, 0.46);
+  }
 
   // 子ぷよの相対位置: 0=上, 1=右, 2=下, 3=左
   const DR = [-1, 0, 1, 0];
@@ -457,6 +467,8 @@
     shakeT = 0; shakeMag = 0;
     flash = null;
     clearDur = CLEAR_DURATION;
+    zenkeshiPending = false;
+    zenkeshiFx = null;
     fallingList = [];
     fallingTargets = null;
     fallTimer = 0;
@@ -646,6 +658,12 @@
       // 連鎖終了
       maxChain = Math.max(maxChain, resolveChain);
       updateHUD(resolveChain);
+      // 全消し判定(本家準拠: 次の消去にお邪魔30個分=2100点を上乗せ)
+      if (resolveChain >= 1 && board.every((row) => row.every((v) => v === null))) {
+        zenkeshiPending = true;
+        zenkeshiFx = { t: 0 };
+        sZenkeshi();
+      }
       phase = 'play';
       spawnNext();
       return;
@@ -670,6 +688,11 @@
     const n = clearingList.length;
     const chainBonus = resolveChain === 1 ? 1 : (1 << (resolveChain - 1));
     score += n * 10 * chainBonus;
+    if (zenkeshiPending) {
+      // 全消しボーナスを「次の消去」で消化(本家準拠)
+      score += ZENKESHI_BONUS;
+      zenkeshiPending = false;
+    }
     scoreEl.textContent = score;
     sPop(resolveChain);                  // 消える音(連鎖で高くなる)
     // 連鎖ポップの位置(消去セルの重心)を算出
@@ -1266,6 +1289,9 @@
 
     ctx.restore();   // シェイク用 translate を解除
 
+    // 全消しバナー(画面座標で中央に表示)
+    drawZenkeshi(ctx);
+
     // 画面フラッシュ(シェイクの影響を受けず全面を覆う)
     if (flash) {
       const fp = flash.t / flash.dur;
@@ -1330,6 +1356,47 @@
     g.restore();
   }
 
+  // 「ぜんけし」バナー(本家風に1文字ずつ弾んで登場し、ぷかぷか浮かぶ)
+  function drawZenkeshi(g) {
+    if (!zenkeshiFx) return;
+    const t = zenkeshiFx.t;
+    const p = t / ZENKESHI_FX_DUR;
+    const alpha = p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22);
+    const chars = 'ぜんけし';
+    const size = 46;
+    const spacing = size * 1.06;
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2 - CELL * 0.6;
+    const startX = cx - spacing * (chars.length - 1) / 2;
+    g.save();
+    g.globalAlpha = alpha;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    g.font = `bold ${size}px "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif`;
+    for (let i = 0; i < chars.length; i++) {
+      const ct = t - i * 95;             // 1文字ずつ順に登場
+      if (ct < 0) continue;
+      const ap = Math.min(1, ct / 240);
+      const s = 1.7 - 0.7 * (1 - Math.pow(1 - ap, 3));   // 大きく出てキュッと収まる
+      const bob = Math.sin(ct / 280 + i * 0.9) * 4;       // ぷかぷか上下
+      const col = CHAIN_HUES[i % CHAIN_HUES.length];
+      g.save();
+      g.globalAlpha = alpha * ap;
+      g.translate(startX + spacing * i, cy + bob);
+      g.scale(s, s);
+      g.shadowColor = col;
+      g.shadowBlur = 16;
+      g.lineWidth = 7;
+      g.strokeStyle = 'rgba(0,0,0,0.6)';
+      g.strokeText(chars[i], 0, 0);
+      g.fillStyle = col;
+      g.fillText(chars[i], 0, 0);
+      g.restore();
+    }
+    g.restore();
+  }
+
   function drawNext() {
     nctx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
     if (!nextColors) return;
@@ -1381,6 +1448,10 @@
     if (chainPopup) {
       chainPopup.t += dt;
       if (chainPopup.t >= CHAIN_POPUP_DUR) chainPopup = null;
+    }
+    if (zenkeshiFx) {
+      zenkeshiFx.t += dt;
+      if (zenkeshiFx.t >= ZENKESHI_FX_DUR) zenkeshiFx = null;
     }
     updateBGMTempo();   // ピンチで曲を速く・通常で元に戻す
     draw();
