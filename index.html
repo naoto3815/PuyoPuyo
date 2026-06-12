@@ -1032,11 +1032,13 @@
   }
 
   // ぷよ1個をツヤツヤに描く（色ごとに形・顔が変わる）
-  function drawPuyoChar(g, x, y, colorIdx) {
+  function drawPuyoChar(g, x, y, colorIdx, mergeUp) {
     const cx = x + CELL / 2;
     const cy = y + CELL * 0.50;
     const R = CELL * 0.40;
-    const type = SHAPE[colorIdx];
+    // 上に同色がつながっている時はツノを引っ込めて丸くなる(連結が途切れて見えないように)
+    let type = SHAPE[colorIdx];
+    if (mergeUp && type === 'horns') type = 'blob';
 
     // 本体（放射グラデで球のツヤ）＋落ち影
     g.save();
@@ -1110,8 +1112,8 @@
   }
 
   // ぷよを描く(本家アート風の手描き)
-  function drawPuyo(g, x, y, colorIdx) {
-    drawPuyoChar(g, x, y, colorIdx);
+  function drawPuyo(g, x, y, colorIdx, mergeUp) {
+    drawPuyoChar(g, x, y, colorIdx, mergeUp);
   }
 
   function roundRectPath(g, x, y, w, h, r) {
@@ -1212,7 +1214,7 @@
       for (let c = 0; c < COLS; c++) {
         const col = board[r][c];
         if (col === null || hidden(r, c)) continue;
-        withWobble(ctx, r, c, () => drawPuyo(ctx, c * CELL, r * CELL, col));
+        withWobble(ctx, r, c, () => drawPuyo(ctx, c * CELL, r * CELL, col, colorAt(r - 1, c) === col));
       }
     }
     // 消去演出: 対象ぷよを白く点滅 → 終盤はポップ(縮小)
@@ -1287,11 +1289,13 @@
     // 操作中のぷよ(落下中は独立して表示)
     if (piece) {
       if (piece.row >= 0) {
-        drawPuyo(ctx, piece.col * CELL, piece.row * CELL, piece.axis);
+        drawPuyo(ctx, piece.col * CELL, piece.row * CELL, piece.axis,
+                 colorAt(piece.row - 1, piece.col) === piece.axis);
       }
       const ch = childCell(piece);
       if (ch.r >= 0) {
-        drawPuyo(ctx, ch.c * CELL, ch.r * CELL, piece.child);
+        drawPuyo(ctx, ch.c * CELL, ch.r * CELL, piece.child,
+                 colorAt(ch.r - 1, ch.c) === piece.child);
       }
     }
 
@@ -1427,7 +1431,7 @@
       nctx.fill();
     }
     drawPuyo(nctx, x, 8, nextColors[0]);
-    drawPuyo(nctx, x, 8 + CELL, nextColors[1]);
+    drawPuyo(nctx, x, 8 + CELL, nextColors[1], nextColors[0] === nextColors[1]);
   }
 
   // ---- ループ ----
