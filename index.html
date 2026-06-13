@@ -159,9 +159,11 @@
 
   /* スマホ・縦画面向け: 画面を固定し、盤面＋操作パッドを1画面に収める */
   @media (max-width: 720px) {
-    /* ページ全体をビューポートに固定してスクロール・バウンドを止める */
+    /* ページ全体をビューポートに固定してスクロール・バウンドを止める。
+       高さは 100dvh(動的ビューポート)でアドレスバー表示時も実際に見える範囲に収める */
     html, body {
-      position: fixed; inset: 0; width: 100%; height: 100%;
+      position: fixed; top: 0; left: 0; right: 0; width: 100%;
+      height: 100vh; height: 100dvh;
       overflow: hidden; touch-action: none; overscroll-behavior: none;
     }
     body {
