@@ -160,11 +160,13 @@
   /* スマホ・縦画面向け: 画面を固定し、盤面＋操作パッドを1画面に収める */
   @media (max-width: 720px) {
     /* ページ全体をビューポートに固定してスクロール・バウンドを止める。
-       高さは 100svh(最小ビューポート=ブラウザUIが全部見えている前提の高さ)にして、
-       iOS Safariでアドレスバーが出ていても下の操作ボタンが隠れないようにする */
+       高さは JS が実測した可視領域(--app-height = visualViewport/innerHeight)を使う。
+       svh/dvh はブラウザによって挙動が不安定なため、実測値を最優先にして
+       アドレスバーやツールバーが出ていても下の操作ボタンが必ず収まるようにする */
     html, body {
       position: fixed; top: 0; left: 0; right: 0; width: 100%;
-      height: 100vh; height: 100svh;
+      height: 100vh;                 /* JS非対応時のフォールバック */
+      height: var(--app-height, 100vh);
       overflow: hidden; touch-action: none; overscroll-behavior: none;
     }
     body {
@@ -293,6 +295,22 @@
 
 <script>
 (() => {
+  // --- 可視領域の高さを実測して CSS変数 --app-height に反映 ---
+  // iOS の Safari/Chrome ではアドレスバーやツールバーの分だけ表示領域が縮むが、
+  // CSS の svh/dvh だけでは取りこぼす場合があるため、実際の表示高さを測って使う。
+  // visualViewport.height があればそれを最優先(ツールバー表示中の本当の可視高さ)。
+  function setAppHeight() {
+    const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+    document.documentElement.style.setProperty('--app-height', h + 'px');
+  }
+  setAppHeight();
+  window.addEventListener('resize', setAppHeight);
+  window.addEventListener('orientationchange', () => setTimeout(setAppHeight, 300));
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', setAppHeight);
+    window.visualViewport.addEventListener('scroll', setAppHeight);
+  }
+
   const COLS = 6, ROWS = 12, CELL = 44;
   const HIDDEN = 2;            // 画面の上に隠れた控え行。ここまで積み切るとゲームオーバー
   const TOTAL = ROWS + HIDDEN; // 盤面配列の総行数(見える12行 + 見えない2行)
