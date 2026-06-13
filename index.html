@@ -167,6 +167,10 @@
       position: fixed; top: 0; left: 0; right: 0; width: 100%;
       height: 100vh;                 /* JS非対応時のフォールバック */
       height: var(--app-height, 100vh);
+      /* ベースの min-height:100vh を必ず打ち消す。これを残すと min-height が height より
+         優先され、body が 100vh(ツールバー込みの大きい高さ)に引き伸ばされて下端が
+         ツールバーの裏に潜り込み、操作ボタンが隠れてしまう */
+      min-height: 0;
       overflow: hidden; touch-action: none; overscroll-behavior: none;
     }
     body {
@@ -300,8 +304,13 @@
   // CSS の svh/dvh だけでは取りこぼす場合があるため、実際の表示高さを測って使う。
   // visualViewport.height があればそれを最優先(ツールバー表示中の本当の可視高さ)。
   function setAppHeight() {
-    const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-    document.documentElement.style.setProperty('--app-height', h + 'px');
+    // 実際に見える高さ。innerHeight と visualViewport.height の小さい方を採り、
+    // ツールバー表示中でも確実に可視領域内に収める
+    const vv = window.visualViewport ? window.visualViewport.height : Infinity;
+    const h = Math.min(window.innerHeight || Infinity, vv);
+    if (h && isFinite(h)) {
+      document.documentElement.style.setProperty('--app-height', h + 'px');
+    }
   }
   setAppHeight();
   window.addEventListener('resize', setAppHeight);
