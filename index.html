@@ -160,10 +160,11 @@
   /* スマホ・縦画面向け: 画面を固定し、盤面＋操作パッドを1画面に収める */
   @media (max-width: 720px) {
     /* ページ全体をビューポートに固定してスクロール・バウンドを止める。
-       高さは 100dvh(動的ビューポート)でアドレスバー表示時も実際に見える範囲に収める */
+       高さは 100svh(最小ビューポート=ブラウザUIが全部見えている前提の高さ)にして、
+       iOS Safariでアドレスバーが出ていても下の操作ボタンが隠れないようにする */
     html, body {
       position: fixed; top: 0; left: 0; right: 0; width: 100%;
-      height: 100vh; height: 100dvh;
+      height: 100vh; height: 100svh;
       overflow: hidden; touch-action: none; overscroll-behavior: none;
     }
     body {
@@ -191,7 +192,7 @@
     #board { height: 100%; width: auto; max-width: 100%; }
     .keys { display: none; }            /* キーボード説明はスマホでは不要 */
     /* 操作パッド: 下部に固定的に配置。指で押しやすい大きさに */
-    .pad { width: 100%; max-width: 460px; margin: 6px auto 0; justify-content: space-around; flex: 0 0 auto; }
+    .pad { width: 100%; max-width: 460px; margin: 6px auto 4px; justify-content: space-around; flex: 0 0 auto; }
     .btn { width: 64px; height: 64px; font-size: 24px; }
     .btn.rot { width: 68px; height: 68px; font-size: 28px; }
     /* 設定パネルはボトムシート(ドロワー)として下から出す */
