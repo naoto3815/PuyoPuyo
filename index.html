@@ -379,6 +379,7 @@
     dropInterval = SPEED_MS[lv - 1];
   }
 
+  let paused = false;          // 設定ドロワーを開いている間はゲームを一時停止
   // 消去演出の状態
   let phase = 'play';          // 'play' | 'clear' | 'fall'
   let clearingList = [];       // 消去中のセル [{r,c}]
@@ -459,7 +460,7 @@
     }
   }
   function startBGM() {            // ユーザー操作の直後に呼ぶ(自動再生制限の解除)
-    if (!soundOn || gameOver) return;   // ゲームオーバー中は操作しても鳴らさない
+    if (!soundOn || gameOver || paused) return;   // ゲームオーバー・一時停止中は鳴らさない
     ensureBGM();
     if (bgm.paused) { const p = bgm.play(); if (p && p.catch) p.catch(() => {}); }
   }
@@ -592,7 +593,7 @@
 
   // ---- 入力 ----
   function move(dir) {
-    if (gameOver || !piece) return;
+    if (gameOver || paused || !piece) return;
     if (valid(piece, piece.rot, piece.row, piece.col + dir)) {
       piece.col += dir;
       sMove();
@@ -600,7 +601,7 @@
   }
 
   function rotate(dir) { // dir: +1=右回転, -1=左回転
-    if (gameOver || !piece) return;
+    if (gameOver || paused || !piece) return;
     const newRot = (piece.rot + (dir > 0 ? 1 : 3)) % 4;
     // 壁蹴り候補: そのまま→左→右→上→下
     const kicks = [[0, 0], [0, -1], [0, 1], [-1, 0], [1, 0]];
@@ -1540,6 +1541,8 @@
   function loop(now) {
     const dt = now - last;
     last = now;
+    // 一時停止中(設定ドロワー表示中)は時間を進めず、表示だけ維持する
+    if (paused) { draw(); requestAnimationFrame(loop); return; }
     if (!gameOver) {
       if (phase === 'play' && piece) {
         dropTimer += dt;
@@ -1582,6 +1585,7 @@
 
   // ---- キー ----
   document.addEventListener('keydown', (e) => {
+    if (paused) return;   // 設定中(一時停止)は操作・BGM再開をしない
     ensureAudio();   // 最初のキー操作で音声を有効化(自動再生制限の解除)
     startBGM();      // 最初の操作でBGM開始
     if (gameOver) return;
@@ -1658,8 +1662,16 @@
   // 設定ドロワー(スマホ): ギアで開閉。背景タップ・閉じるボタンで閉じる
   const panel = document.querySelector('.panel');
   const backdrop = document.getElementById('drawer-backdrop');
-  function openDrawer() { panel.classList.add('open'); backdrop.classList.add('show'); }
-  function closeDrawer() { panel.classList.remove('open'); backdrop.classList.remove('show'); }
+  function openDrawer() {
+    panel.classList.add('open'); backdrop.classList.add('show');
+    paused = true;            // 設定中はゲームを止める
+    stopBGM();                // 音楽も止める
+  }
+  function closeDrawer() {
+    panel.classList.remove('open'); backdrop.classList.remove('show');
+    paused = false;           // 再開
+    startBGM();               // 音楽も再開(サウンドONかつプレイ中のみ)
+  }
   document.getElementById('settings-btn').addEventListener('click', openDrawer);
   document.getElementById('settings-close').addEventListener('click', closeDrawer);
   backdrop.addEventListener('click', closeDrawer);
