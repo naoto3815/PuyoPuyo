@@ -453,8 +453,8 @@
       if (voiceSource) { try { voiceSource.stop(); } catch (e) {} } // 直前の声を打ち切り重ねない
       const src = audioCtx.createBufferSource();
       src.buffer = voiceBuffers[i];
-      // 少し速く・高くしてハイテンションに。連鎖が進むほどさらに勢いUP
-      src.playbackRate.value = Math.min(1.05 + Math.min(chain - 1, 8) * 0.022, 1.26);
+      // しっかり速く・高くしてハイテンションに。連鎖が進むほどさらに勢いUP
+      src.playbackRate.value = Math.min(1.18 + Math.min(chain - 1, 8) * 0.03, 1.42);
       const g = audioCtx.createGain();
       g.gain.value = 1;
       src.connect(g).connect(audioCtx.destination);
