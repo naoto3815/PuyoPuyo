@@ -293,7 +293,7 @@
       <b>←</b> 左回転<br>
       <b>→</b> 右回転
     </div>
-    <div class="credit">連鎖ボイス: VOICEVOX:四国めたん</div>
+    <div class="credit">連鎖ボイス: VOICEVOX:春日部つむぎ</div>
     <button class="drawer-close" id="settings-close">閉じる</button>
   </div>
 </div>
@@ -453,8 +453,8 @@
       if (voiceSource) { try { voiceSource.stop(); } catch (e) {} } // 直前の声を打ち切り重ねない
       const src = audioCtx.createBufferSource();
       src.buffer = voiceBuffers[i];
-      // 連鎖が進むほど少し速く・高くしてテンションUP(肉声をそのまま活かしつつ味付け)
-      src.playbackRate.value = Math.min(1 + Math.min(chain - 1, 8) * 0.018, 1.18);
+      // 少し速く・高くしてハイテンションに。連鎖が進むほどさらに勢いUP
+      src.playbackRate.value = Math.min(1.05 + Math.min(chain - 1, 8) * 0.022, 1.26);
       const g = audioCtx.createGain();
       g.gain.value = 1;
       src.connect(g).connect(audioCtx.destination);
