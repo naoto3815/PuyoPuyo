@@ -390,6 +390,60 @@
   let clearDur = CLEAR_DURATION;  // 連鎖が進むほど「溜め」を長くする(段数で変化)
   let chainPopup = null;       // 連鎖数ポップ {n, t, x, y}
   const CHAIN_POPUP_DUR = 1100;
+  // 本家ぷよぷよ通の連鎖ボイス(呪文)。show=画面表示, say=読み上げ用
+  const CHAIN_SPELLS = [
+    { show: 'ファイヤー',     say: 'ファイヤー' },
+    { show: 'アイスストーム', say: 'アイスストーム' },
+    { show: 'ダイアキュート', say: 'ダイアキュート' },
+    { show: 'ブレインダムド', say: 'ブレインダムド' },
+    { show: 'ジュゲム',       say: 'ジュゲム' },
+    { show: 'ミラクルボム',   say: 'ミラクルボム' },
+    { show: 'バヨエ〜ン',     say: 'バヨエーン' },
+  ];
+  let chainVoice = null;       // 連鎖セリフのカットイン {text, t}
+  const CHAIN_VOICE_DUR = 1300;
+  let jaVoice = null;          // 日本語の音声合成ボイス(萌え・女性声を優先)
+  // 女性・高品質な日本語ボイスを優先選択(萌え＆ノリの良い声を狙う)
+  function pickJaVoice() {
+    if (!('speechSynthesis' in window)) return;
+    const vs = speechSynthesis.getVoices().filter((v) => /ja[-_]?JP|^ja$/i.test(v.lang) || /日本語/.test(v.name));
+    if (!vs.length) { jaVoice = null; return; }
+    // 名前から女性・かわいい系・高品質を点数化(男性声・ロボ声は減点)
+    const FEMALE = /(google|kyoko|o-?ren|sayaka|haruka|nanami|mizuki|ayumi|female|女性|あおい|さくら|はるか|ナナミ|kore|aoede|sulafat)/i;
+    const MALE = /(otoya|hattori|ichiro|male|男性|takeru)/i;
+    const NICE = /(google|enhanced|premium|neural|natural|高品質|plus|siri)/i;
+    const score = (v) => {
+      let s = 0;
+      if (FEMALE.test(v.name)) s += 10;
+      if (MALE.test(v.name)) s -= 10;
+      if (NICE.test(v.name)) s += 4;     // 自然な高品質声を優先
+      if (/google/i.test(v.name)) s += 3; // Chromeの「Google 日本語」は特に自然
+      return s;
+    };
+    jaVoice = vs.slice().sort((a, b) => score(b) - score(a))[0];
+  }
+  if ('speechSynthesis' in window) {
+    pickJaVoice();
+    speechSynthesis.onvoiceschanged = pickJaVoice;
+  }
+  // 連鎖の呪文を表示＋読み上げ。連鎖が上がるほどテンションUP(高く・元気に)
+  function chant(chain) {
+    const spell = CHAIN_SPELLS[Math.min(chain - 1, CHAIN_SPELLS.length - 1)];
+    chainVoice = { text: spell.show, t: 0 };
+    if (!soundOn || !('speechSynthesis' in window)) return;
+    try {
+      speechSynthesis.cancel();   // 連鎖が速く続いても直前のセリフを止めて重ねない
+      const u = new SpeechSynthesisUtterance(spell.say);
+      u.lang = 'ja-JP';
+      if (jaVoice) u.voice = jaVoice;
+      const up = Math.min(chain - 1, 8) * 0.05;       // 連鎖が進むほど声を高く
+      const wobble = (Math.random() - 0.5) * 0.12;    // 毎回ちょっと揺らして生っぽく
+      u.pitch = Math.min(1.7 + up + wobble, 2);        // 萌え寄りの高めピッチ
+      u.rate = Math.min(1.25 + Math.min(chain - 1, 6) * 0.04, 1.6); // ノリよく元気に・連鎖で加速
+      u.volume = 1;
+      speechSynthesis.speak(u);
+    } catch (e) { /* 読み上げ非対応でも演出は続行 */ }
+  }
   // 連鎖の派手な演出
   let shockwaves = [];         // 衝撃波リング [{x,y,t,delay,dur,hue,max}]
   let shakeT = 0, shakeMag = 0;// 画面シェイク(残り時間ms / 強さpx)
@@ -565,6 +619,8 @@
     resolveChain = 0;
     particles = [];
     chainPopup = null;
+    chainVoice = null;
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
     shockwaves = [];
     shakeT = 0; shakeMag = 0;
     flash = null;
@@ -797,6 +853,7 @@
     }
     showScore();
     sPop(resolveChain);                  // 消える音(連鎖で高くなる)
+    chant(resolveChain);                 // 本家風の連鎖ボイス(ファイヤー/アイスストーム…)
     // 連鎖ポップの位置(消去セルの重心)を算出
     let sx = 0, sy = 0;
     for (const { r, c } of clearingList) { sx += c; sy += r; }
@@ -1410,6 +1467,9 @@
     // 連鎖カウント演出
     drawChainPopup(ctx);
 
+    // 連鎖ボイス(本家風のセリフ・カットイン)
+    drawChainVoice(ctx);
+
     ctx.restore();   // シェイク用 translate を解除
 
     // 全消しバナー(画面座標で中央に表示)
@@ -1476,6 +1536,55 @@
     g.fillStyle = '#fff';
     g.strokeText('連鎖', startX + numW + 4, 3);
     g.fillText('連鎖', startX + numW + 4, 3);
+    g.restore();
+  }
+
+  // 連鎖ボイス(ファイヤー/アイスストーム…)を本家風カットインで表示
+  function drawChainVoice(g) {
+    if (!chainVoice) return;
+    const p = chainVoice.t / CHAIN_VOICE_DUR;          // 0..1
+    // 横からシュッと滑り込み→中央で弾み→最後にフェード
+    const slide = p < 0.18 ? (1 - p / 0.18) * canvas.width * 0.6 : 0;
+    const pop = p < 0.18
+      ? 1
+      : p < 0.32 ? 1 + 0.12 * Math.sin((p - 0.18) / 0.14 * Math.PI) : 1;
+    const alpha = p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22);
+    const tilt = -0.06;                                 // ちょい斜めで勢いを出す
+    const cx = canvas.width / 2 + slide;
+    // 盤面は HIDDEN 行ぶん上にずれた座標系で描かれるため、隠れ行を足して
+    // 見える盤面の上部に収める(これを忘れると画面外に飛び出して隠れる)
+    const cy = (HIDDEN + 1.5) * CELL;
+    const txt = chainVoice.text;
+
+    g.save();
+    g.globalAlpha = alpha;
+    g.translate(cx, cy);
+    g.rotate(tilt);
+    g.scale(pop, pop);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = '900 34px "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif';
+    const w = g.measureText(txt).width;
+    // 背景の帯(虹色グラデで本家っぽく)
+    const grad = g.createLinearGradient(-w / 2, 0, w / 2, 0);
+    grad.addColorStop(0, '#ff4a8c');
+    grad.addColorStop(0.5, '#ffd24a');
+    grad.addColorStop(1, '#5a9bff');
+    g.fillStyle = grad;
+    g.globalAlpha = alpha * 0.9;
+    const padX = 18, padY = 10, bw = w + padX * 2, bh = 34 + padY * 2;
+    if (g.roundRect) { g.beginPath(); g.roundRect(-bw / 2, -bh / 2, bw, bh, 12); g.fill(); }
+    else g.fillRect(-bw / 2, -bh / 2, bw, bh);
+    g.globalAlpha = alpha;
+    // 文字(白抜き＋濃いふちどり＋発光)
+    g.lineJoin = 'round';
+    g.shadowColor = 'rgba(255,255,255,0.9)';
+    g.shadowBlur = 12;
+    g.lineWidth = 7; g.strokeStyle = 'rgba(40,20,60,0.85)';
+    g.strokeText(txt, 0, 1);
+    g.shadowBlur = 0;
+    g.fillStyle = '#fff';
+    g.fillText(txt, 0, 1);
     g.restore();
   }
 
@@ -1574,6 +1683,10 @@
       chainPopup.t += dt;
       if (chainPopup.t >= CHAIN_POPUP_DUR) chainPopup = null;
     }
+    if (chainVoice) {
+      chainVoice.t += dt;
+      if (chainVoice.t >= CHAIN_VOICE_DUR) chainVoice = null;
+    }
     if (zenkeshiFx) {
       zenkeshiFx.t += dt;
       if (zenkeshiFx.t >= ZENKESHI_FX_DUR) zenkeshiFx = null;
@@ -1656,7 +1769,7 @@
   soundInput.addEventListener('change', () => {
     soundOn = soundInput.checked;
     if (soundOn) { ensureAudio(); sMove(); startBGM(); }   // ONにした合図 + BGM再開
-    else { stopBGM(); }                                     // OFFでBGM停止
+    else { stopBGM(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }  // OFFでBGM・読み上げ停止
   });
 
   // 設定ドロワー(スマホ): ギアで開閉。背景タップ・閉じるボタンで閉じる
@@ -1666,6 +1779,7 @@
     panel.classList.add('open'); backdrop.classList.add('show');
     paused = true;            // 設定中はゲームを止める
     stopBGM();                // 音楽も止める
+    if ('speechSynthesis' in window) speechSynthesis.cancel();   // 読み上げも止める
   }
   function closeDrawer() {
     panel.classList.remove('open'); backdrop.classList.remove('show');
