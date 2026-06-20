@@ -293,7 +293,7 @@
       <b>←</b> 左回転<br>
       <b>→</b> 右回転
     </div>
-    <div class="credit">連鎖ボイス: VOICEVOX:春日部つむぎ</div>
+    <div class="credit">連鎖ボイス: VOICEVOX:ずんだもん</div>
     <button class="drawer-close" id="settings-close">閉じる</button>
   </div>
 </div>
@@ -392,16 +392,16 @@
   let clearDur = CLEAR_DURATION;  // 連鎖が進むほど「溜め」を長くする(段数で変化)
   let chainPopup = null;       // 連鎖数ポップ {n, t, x, y}
   const CHAIN_POPUP_DUR = 1100;
-  // 本家ぷよぷよ通の連鎖ボイス(呪文)。show=画面表示, say=TTS読み上げ用, file=肉声mp3
+  // 連鎖ボイス(1連鎖〜7連鎖以上)。show=画面表示, say=TTS読み上げ用, file=肉声mp3
   // file があればそれを最優先で再生し、無い/未配置なら say を TTS にフォールバック
   const CHAIN_SPELLS = [
-    { show: 'ファイヤー',     say: 'ファイヤー',     file: 'voice/0.mp3' },
-    { show: 'アイスストーム', say: 'アイスストーム', file: 'voice/1.mp3' },
-    { show: 'ダイアキュート', say: 'ダイアキュート', file: 'voice/2.mp3' },
-    { show: 'ブレインダムド', say: 'ブレインダムド', file: 'voice/3.mp3' },
-    { show: 'ジュゲム',       say: 'ジュゲム',       file: 'voice/4.mp3' },
-    { show: 'ミラクルボム',   say: 'ミラクルボム',   file: 'voice/5.mp3' },
-    { show: 'バヨエ〜ン',     say: 'バヨエーン',     file: 'voice/6.mp3' },
+    { show: 'えいっ！',       say: 'えいっ',         file: 'voice/0.mp3' },  // 1連鎖
+    { show: 'ファイヤー',     say: 'ファイヤー',     file: 'voice/1.mp3' },  // 2連鎖
+    { show: 'アイスストーム', say: 'アイスストーム', file: 'voice/2.mp3' },  // 3連鎖
+    { show: 'ダイヤキュート', say: 'ダイヤキュート', file: 'voice/3.mp3' },  // 4連鎖
+    { show: 'ブレインダムド', say: 'ブレインダムド', file: 'voice/4.mp3' },  // 5連鎖
+    { show: 'ジュゲム',       say: 'ジュゲム',       file: 'voice/5.mp3' },  // 6連鎖
+    { show: 'ばよえーん',     say: 'ばよえーん',     file: 'voice/6.mp3' },  // 7連鎖以上
   ];
   let chainVoice = null;       // 連鎖セリフのカットイン {text, t}
   const CHAIN_VOICE_DUR = 1300;
