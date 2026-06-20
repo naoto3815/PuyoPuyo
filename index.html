@@ -390,15 +390,16 @@
   let clearDur = CLEAR_DURATION;  // 連鎖が進むほど「溜め」を長くする(段数で変化)
   let chainPopup = null;       // 連鎖数ポップ {n, t, x, y}
   const CHAIN_POPUP_DUR = 1100;
-  // 本家ぷよぷよ通の連鎖ボイス(呪文)。show=画面表示, say=読み上げ用
+  // 本家ぷよぷよ通の連鎖ボイス(呪文)。show=画面表示, say=TTS読み上げ用, file=肉声mp3
+  // file があればそれを最優先で再生し、無い/未配置なら say を TTS にフォールバック
   const CHAIN_SPELLS = [
-    { show: 'ファイヤー',     say: 'ファイヤー' },
-    { show: 'アイスストーム', say: 'アイスストーム' },
-    { show: 'ダイアキュート', say: 'ダイアキュート' },
-    { show: 'ブレインダムド', say: 'ブレインダムド' },
-    { show: 'ジュゲム',       say: 'ジュゲム' },
-    { show: 'ミラクルボム',   say: 'ミラクルボム' },
-    { show: 'バヨエ〜ン',     say: 'バヨエーン' },
+    { show: 'ファイヤー',     say: 'ファイヤー',     file: 'voice/0.mp3' },
+    { show: 'アイスストーム', say: 'アイスストーム', file: 'voice/1.mp3' },
+    { show: 'ダイアキュート', say: 'ダイアキュート', file: 'voice/2.mp3' },
+    { show: 'ブレインダムド', say: 'ブレインダムド', file: 'voice/3.mp3' },
+    { show: 'ジュゲム',       say: 'ジュゲム',       file: 'voice/4.mp3' },
+    { show: 'ミラクルボム',   say: 'ミラクルボム',   file: 'voice/5.mp3' },
+    { show: 'バヨエ〜ン',     say: 'バヨエーン',     file: 'voice/6.mp3' },
   ];
   let chainVoice = null;       // 連鎖セリフのカットイン {text, t}
   const CHAIN_VOICE_DUR = 1300;
@@ -426,11 +427,54 @@
     pickJaVoice();
     speechSynthesis.onvoiceschanged = pickJaVoice;
   }
-  // 連鎖の呪文を表示＋読み上げ。連鎖が上がるほどテンションUP(高く・元気に)
+  // ---- 連鎖ボイス(肉声mp3 を最優先、無ければ TTS フォールバック) ----
+  const voiceBuffers = new Array(CHAIN_SPELLS.length).fill(null); // 復号済み AudioBuffer
+  let voiceLoadStarted = false;
+  let voiceSource = null;        // 現在鳴っている肉声ボイス(打ち切り用)
+  // mp3 を取得して AudioBuffer に復号(未配置の 404 は無視して TTS にフォールバック)
+  function loadVoices() {
+    if (voiceLoadStarted || !audioCtx) return;
+    voiceLoadStarted = true;
+    CHAIN_SPELLS.forEach((spell, i) => {
+      if (!spell.file) return;
+      fetch(spell.file)
+        .then((r) => { if (!r.ok) throw new Error('no voice file'); return r.arrayBuffer(); })
+        .then((buf) => audioCtx.decodeAudioData(buf))
+        .then((decoded) => { voiceBuffers[i] = decoded; })
+        .catch(() => { /* 未配置/未対応: その呪文は TTS で読み上げる */ });
+    });
+  }
+  // 肉声ボイスを再生。成功で true(=TTS不要)、素材が無ければ false
+  function playVoice(i, chain) {
+    if (!soundOn || paused || !audioCtx || !voiceBuffers[i]) return false;
+    try {
+      if (voiceSource) { try { voiceSource.stop(); } catch (e) {} } // 直前の声を打ち切り重ねない
+      const src = audioCtx.createBufferSource();
+      src.buffer = voiceBuffers[i];
+      // 連鎖が進むほど少し速く・高くしてテンションUP(肉声をそのまま活かしつつ味付け)
+      src.playbackRate.value = Math.min(1 + Math.min(chain - 1, 8) * 0.018, 1.18);
+      const g = audioCtx.createGain();
+      g.gain.value = 1;
+      src.connect(g).connect(audioCtx.destination);
+      src.onended = () => { if (voiceSource === src) voiceSource = null; };
+      voiceSource = src;
+      src.start();
+      return true;
+    } catch (e) { return false; }
+  }
+  // 連鎖ボイスを止める(サウンドOFF・一時停止・リスタート時)
+  function stopVoice() {
+    if (voiceSource) { try { voiceSource.stop(); } catch (e) {} voiceSource = null; }
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+  }
+  // 連鎖の呪文を表示＋発声。肉声mp3があればそれを、無ければ TTS で読み上げ
   function chant(chain) {
-    const spell = CHAIN_SPELLS[Math.min(chain - 1, CHAIN_SPELLS.length - 1)];
+    const idx = Math.min(chain - 1, CHAIN_SPELLS.length - 1);
+    const spell = CHAIN_SPELLS[idx];
     chainVoice = { text: spell.show, t: 0 };
-    if (!soundOn || !('speechSynthesis' in window)) return;
+    if (!soundOn) return;
+    if (playVoice(idx, chain)) return;   // 肉声を再生できたら TTS は使わない
+    if (!('speechSynthesis' in window)) return;
     try {
       speechSynthesis.cancel();   // 連鎖が速く続いても直前のセリフを止めて重ねない
       const u = new SpeechSynthesisUtterance(spell.say);
@@ -503,6 +547,15 @@
       if (AC) audioCtx = new AC();
     }
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if (audioCtx) {
+      // iOSのサイレントスイッチ等で無音化されるのを、最初の操作時に無音バッファ再生で解除
+      try {
+        const b = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+        const s = audioCtx.createBufferSource();
+        s.buffer = b; s.connect(audioCtx.destination); s.start();
+      } catch (e) {}
+      loadVoices();   // 連鎖ボイスmp3のプリロード(初回操作で1回だけ)
+    }
   }
   // ---- BGM(フォルダ内のMP3をループ再生) ----
   let bgm = null;
@@ -620,7 +673,7 @@
     particles = [];
     chainPopup = null;
     chainVoice = null;
-    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    stopVoice();
     shockwaves = [];
     shakeT = 0; shakeMag = 0;
     flash = null;
@@ -1769,7 +1822,7 @@
   soundInput.addEventListener('change', () => {
     soundOn = soundInput.checked;
     if (soundOn) { ensureAudio(); sMove(); startBGM(); }   // ONにした合図 + BGM再開
-    else { stopBGM(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }  // OFFでBGM・読み上げ停止
+    else { stopBGM(); stopVoice(); }  // OFFでBGM・連鎖ボイス停止
   });
 
   // 設定ドロワー(スマホ): ギアで開閉。背景タップ・閉じるボタンで閉じる
@@ -1779,7 +1832,7 @@
     panel.classList.add('open'); backdrop.classList.add('show');
     paused = true;            // 設定中はゲームを止める
     stopBGM();                // 音楽も止める
-    if ('speechSynthesis' in window) speechSynthesis.cancel();   // 読み上げも止める
+    stopVoice();              // 連鎖ボイスも止める
   }
   function closeDrawer() {
     panel.classList.remove('open'); backdrop.classList.remove('show');
