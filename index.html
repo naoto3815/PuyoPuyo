@@ -56,9 +56,7 @@
     color: #ff4a4a; font-size: 30px; font-weight: 900; display: none; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
   .ko.show { display: block; }
   /* おじゃま予告 */
-  .ojama-row { height: 22px; display: flex; align-items: center; gap: 3px; font-size: 13px;
-    color: #ffe14a; font-weight: 700; letter-spacing: .5px; min-height: 22px; }
-  .ojama-row .pip { font-size: 16px; }
+  .ojama-row { width: 100%; max-width: 264px; height: 30px; display: block; }
   /* スコア・名前バー */
   .scorebar {
     width: 100%; max-width: 264px; text-align: center; font-weight: 800; font-size: 22px;
@@ -164,7 +162,7 @@
     .nx canvas { width: 52px; }
     .scorebar { font-size: 15px; }
     .namebar { font-size: 12px; }
-    .ojama-row { font-size: 11px; height: 18px; min-height: 18px; }
+    .ojama-row { height: 22px; }
     .keys { display: none; }
     .pad { gap: 16px; margin-top: 8px; }
     .btn { width: 52px; height: 52px; font-size: 20px; }
@@ -175,7 +173,7 @@
 <div id="stage">
   <div id="arena">
     <div class="side p">
-      <div class="ojama-row" id="oj-p"></div>
+      <canvas class="ojama-row" id="oj-p" width="264" height="32"></canvas>
       <div class="bwrap">
         <canvas class="board" id="bd-p" width="264" height="528"></canvas>
         <div class="ko" id="ko-p">✕</div>
@@ -199,7 +197,7 @@
       <button class="gear" id="gear" aria-label="設定">⚙</button>
     </div>
     <div class="side c">
-      <div class="ojama-row" id="oj-c"></div>
+      <canvas class="ojama-row" id="oj-c" width="264" height="32"></canvas>
       <div class="bwrap">
         <canvas class="board" id="bd-c" width="264" height="528"></canvas>
         <div class="ko" id="ko-c">✕</div>
@@ -1692,14 +1690,73 @@
     updateOjama();
   }
 
-  function updateOjama() {
-    renderOjamaRow($('oj-p'), playerField.pendingGarbage);
-    renderOjamaRow($('oj-c'), cpuField.pendingGarbage);
+  // 本家風のおじゃま予告アイコン(個数の段階で 小ぷよ→大ぷよ→岩→星→月→王冠)
+  const FORECAST = [[720, 'crown'], [360, 'moon'], [180, 'star'], [30, 'rock'], [6, 'big'], [1, 'small']];
+  function forecastIcons(n) {
+    const out = []; let rem = n;
+    for (const [v, t] of FORECAST) { while (rem >= v && out.length < 6) { out.push(t); rem -= v; } }
+    return out;
   }
-  function renderOjamaRow(el, n) {
-    if (n <= 0) { el.textContent = ''; return; }
-    const pips = Math.min(n, 6);
-    el.textContent = '⚠ ' + '●'.repeat(pips) + (n > 6 ? ' ×' + n : '');
+  const ojCtxP = $('oj-p').getContext('2d');
+  const ojCtxC = $('oj-c').getContext('2d');
+  function updateOjama() {
+    renderForecast(ojCtxP, $('oj-p'), playerField.pendingGarbage);
+    renderForecast(ojCtxC, $('oj-c'), cpuField.pendingGarbage);
+  }
+  function renderForecast(g, cv, n) {
+    g.clearRect(0, 0, cv.width, cv.height);
+    if (n <= 0) return;
+    const icons = forecastIcons(n);
+    const r = 13, gap = 30, cy = cv.height / 2;
+    icons.forEach((t, i) => drawForecastIcon(g, t, 8 + r + i * gap, cy, r));
+  }
+  function drawForecastIcon(g, type, cx, cy, r) {
+    g.save();
+    g.lineJoin = 'round';
+    if (type === 'small' || type === 'big') {
+      const rr = type === 'big' ? r : r * 0.66;
+      const grad = g.createRadialGradient(cx - rr * 0.4, cy - rr * 0.45, rr * 0.1, cx, cy + rr * 0.1, rr * 1.25);
+      grad.addColorStop(0, '#eef1f7'); grad.addColorStop(0.5, '#c4cbdb'); grad.addColorStop(1, '#8b93a8');
+      g.fillStyle = grad; g.beginPath(); g.arc(cx, cy, rr, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#6b7286'; g.lineWidth = 1.4; g.stroke();
+      g.fillStyle = '#3a3f4d';
+      for (const s of [-1, 1]) { g.beginPath(); g.arc(cx + s * rr * 0.42, cy - rr * 0.05, rr * 0.16, 0, Math.PI * 2); g.fill(); }
+    } else if (type === 'rock') {
+      g.fillStyle = '#9aa1b2'; g.strokeStyle = '#5f6678'; g.lineWidth = 1.5;
+      g.beginPath();
+      for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + i * Math.PI / 3; const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r * 0.92; i ? g.lineTo(px, py) : g.moveTo(px, py); }
+      g.closePath(); g.fill(); g.stroke();
+      g.strokeStyle = 'rgba(40,45,60,0.5)'; g.lineWidth = 1; g.beginPath(); g.moveTo(cx - r * 0.3, cy - r * 0.3); g.lineTo(cx, cy + r * 0.1); g.lineTo(cx + r * 0.35, cy - r * 0.15); g.stroke();
+    } else if (type === 'star') {
+      g.shadowColor = '#ffd24a'; g.shadowBlur = 6;
+      g.fillStyle = '#b9851f'; drawStar(g, cx, cy, r * 1.12, r * 0.52, 5, -Math.PI / 2);
+      g.shadowBlur = 0;
+      g.fillStyle = '#ffe14a'; drawStar(g, cx, cy, r, r * 0.45, 5, -Math.PI / 2);
+      g.fillStyle = 'rgba(255,255,255,0.85)'; g.beginPath(); g.arc(cx - r * 0.2, cy - r * 0.25, r * 0.14, 0, Math.PI * 2); g.fill();
+    } else if (type === 'moon') {
+      g.fillStyle = '#ffe27a'; g.strokeStyle = '#b9851f'; g.lineWidth = 1.2;
+      g.beginPath();
+      g.arc(cx, cy, r, Math.PI * 0.32, Math.PI * 1.68, false);
+      g.arc(cx + r * 0.55, cy, r * 0.95, Math.PI * 1.5, Math.PI * 0.5, true);
+      g.closePath(); g.fill(); g.stroke();
+    } else if (type === 'crown') {
+      const w = r * 1.8, h = r * 1.5, bx = cx - w / 2, rx = cx + w / 2, by = cy + h * 0.42, ty = cy - h * 0.55;
+      g.fillStyle = '#ffd84a'; g.strokeStyle = '#b9851f'; g.lineWidth = 1.4;
+      g.beginPath();
+      g.moveTo(bx, by);
+      g.lineTo(bx, cy + h * 0.02);
+      g.lineTo(cx - w * 0.30, ty + h * 0.22);   // 左の山
+      g.lineTo(cx - w * 0.12, cy + h * 0.14);   // 谷
+      g.lineTo(cx, ty);                          // 中央の山(最高)
+      g.lineTo(cx + w * 0.12, cy + h * 0.14);   // 谷
+      g.lineTo(cx + w * 0.30, ty + h * 0.22);   // 右の山
+      g.lineTo(rx, cy + h * 0.02);
+      g.lineTo(rx, by);
+      g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = '#fff3b0';
+      for (const p of [[cx - w * 0.30, ty + h * 0.22], [cx, ty], [cx + w * 0.30, ty + h * 0.22]]) { g.beginPath(); g.arc(p[0], p[1], r * 0.16, 0, Math.PI * 2); g.fill(); }
+    }
+    g.restore();
   }
 
   function onFieldDead(side) {
