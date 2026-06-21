@@ -89,7 +89,7 @@
   body.mode-solo .nextpair .nx:last-child { display: none; }
   .nx span { font-size: 10px; color: #d8cffa; letter-spacing: 1px; }
   .nx canvas { background: #0d0a1f; border: 2px solid rgba(255,255,255,0.35); border-radius: 6px;
-    width: 46px; height: auto; }
+    width: 68px; height: auto; }
   .gear {
     width: 38px; height: 38px; border-radius: 10px; border: 2px solid rgba(255,255,255,0.4);
     background: rgba(20,12,40,0.6); color: #fff; font-size: 18px; cursor: pointer;
@@ -161,7 +161,7 @@
     #arena { gap: 4px; max-width: 100%; }
     #center { flex-basis: 64px; gap: 6px; }
     .vs { font-size: 16px; }
-    .nx canvas { width: 34px; }
+    .nx canvas { width: 52px; }
     .scorebar { font-size: 15px; }
     .namebar { font-size: 12px; }
     .ojama-row { font-size: 11px; height: 18px; min-height: 18px; }
@@ -193,8 +193,8 @@
       </div>
       <div class="vs">VS</div>
       <div class="nextpair">
-        <div class="nx"><span>YOU</span><canvas id="nx-p" width="72" height="196"></canvas></div>
-        <div class="nx"><span>CPU</span><canvas id="nx-c" width="72" height="196"></canvas></div>
+        <div class="nx"><span>YOU</span><canvas id="nx-p" width="104" height="150"></canvas></div>
+        <div class="nx"><span>CPU</span><canvas id="nx-c" width="104" height="150"></canvas></div>
       </div>
       <button class="gear" id="gear" aria-label="設定">⚙</button>
     </div>
@@ -1859,27 +1859,27 @@
   // ===== 次ぷよプレビュー描画 =====
   const nxp = $('nx-p').getContext('2d');
   const nxc = $('nx-c').getContext('2d');
-  // ネクスト2組(NEXT・NEXT2)を縦に並べて表示。2組目は少し小さく
-  function drawPairAt(g, cv, pair, topY, scale) {
+  // 縦ぷよ1組を中心x・上端yに、指定倍率で描く
+  function drawPairAt(g, pair, cx, topY, scale) {
     if (!pair) return;
     g.save();
-    g.translate(cv.width / 2, topY);
+    g.translate(cx, topY);
     g.scale(scale, scale);
-    const lx = -CELL / 2;
     if (pair[0] === pair[1]) {
       const ccy = CELL, w = CELL * 0.66, h = CELL * 0.92;
       g.fillStyle = bodyGrad(g, pair[0], ccy - h / 2, ccy + h / 2);
       roundRectPath(g, -w / 2, ccy - h / 2, w, h, CELL * 0.2); g.fill();
     }
-    drawPuyo(g, lx, 0, pair[0]);
-    drawPuyo(g, lx, CELL, pair[1], pair[0] === pair[1]);
+    drawPuyo(g, -CELL / 2, 0, pair[0]);
+    drawPuyo(g, -CELL / 2, CELL, pair[1], pair[0] === pair[1]);
     g.restore();
   }
+  // 本家風の階段配置: NEXT(大)を左下、NEXT2(小)を右上にずらして表示
   function drawNextPreview(g, cv, queue) {
     g.clearRect(0, 0, cv.width, cv.height);
     if (!queue || !queue.length) return;
-    drawPairAt(g, cv, queue[0], 6, 1);                       // NEXT(大)
-    drawPairAt(g, cv, queue[1], 6 + CELL * 2 + 16, 0.72);    // NEXT2(小)
+    drawPairAt(g, queue[0], CELL * 0.62, cv.height - CELL * 2 - 6, 1.0);   // NEXT(大・左下)
+    drawPairAt(g, queue[1], cv.width - CELL * 0.5, 6, 0.72);               // NEXT2(小・右上)
   }
 
   // ===== メインループ =====
