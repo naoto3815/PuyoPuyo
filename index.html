@@ -83,6 +83,10 @@
   .vs { font-size: 22px; font-weight: 900; color: #ffe14a; text-shadow: 0 2px 0 #b06a00; letter-spacing: 1px; }
   .nextpair { display: flex; flex-direction: column; gap: 8px; align-items: center; }
   .nx { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  /* 一人で練習モード: 相手側・対戦表示を隠す */
+  body.mode-solo .side.c { display: none; }
+  body.mode-solo #stars, body.mode-solo .vs { visibility: hidden; }
+  body.mode-solo .nextpair .nx:last-child { display: none; }
   .nx span { font-size: 10px; color: #d8cffa; letter-spacing: 1px; }
   .nx canvas { background: #0d0a1f; border: 2px solid rgba(255,255,255,0.35); border-radius: 6px;
     width: 46px; height: auto; }
@@ -189,8 +193,8 @@
       </div>
       <div class="vs">VS</div>
       <div class="nextpair">
-        <div class="nx"><span>YOU</span><canvas id="nx-p" width="72" height="120"></canvas></div>
-        <div class="nx"><span>CPU</span><canvas id="nx-c" width="72" height="120"></canvas></div>
+        <div class="nx"><span>YOU</span><canvas id="nx-p" width="72" height="196"></canvas></div>
+        <div class="nx"><span>CPU</span><canvas id="nx-c" width="72" height="196"></canvas></div>
       </div>
       <button class="gear" id="gear" aria-label="設定">⚙</button>
     </div>
@@ -224,14 +228,21 @@
 </div>
 
 <div class="overlay show" id="startov">
-  <h2>ぷよぷよ CPU対戦</h2>
-  <p>CPUの強さを選んでスタート</p>
-  <div class="seg" id="diff-seg">
-    <button class="seg-btn" data-d="0">弱</button>
-    <button class="seg-btn is-on" data-d="1">中</button>
-    <button class="seg-btn" data-d="2">強</button>
+  <h2>ぷよぷよ</h2>
+  <p>モードを選んでスタート</p>
+  <div class="seg" id="mode-seg">
+    <button class="seg-btn is-on" data-m="vs">CPU対戦</button>
+    <button class="seg-btn" data-m="solo">一人で練習</button>
   </div>
-  <button class="go" id="start-btn">対戦スタート</button>
+  <div id="diff-wrap">
+    <p style="margin:2px 0 6px">CPUの強さ</p>
+    <div class="seg" id="diff-seg">
+      <button class="seg-btn" data-d="0">弱</button>
+      <button class="seg-btn is-on" data-d="1">中</button>
+      <button class="seg-btn" data-d="2">強</button>
+    </div>
+  </div>
+  <button class="go" id="start-btn">スタート</button>
   <div class="keys">
     <b>A/D</b> 移動 ／ <b>S</b> 高速落下 ／ <b>←/→</b> 回転
   </div>
@@ -797,7 +808,7 @@
     let colorCount = opts.colorCount || 4;
     let dropInterval = opts.dropInterval || 560;
     // 状態
-    let board, piece, nextColors, score, maxChain, gameOver;
+    let board, piece, nextQueue, score, maxChain, gameOver;
     let dropTimer = 0, softDrop = false, paused = false;
     let phase = 'play';
     let clearingList = [], clearTimer = 0, resolveChain = 0, particles = [];
@@ -832,8 +843,10 @@
 
 
   function newPiece() {
-    const colors = nextColors || [randColor(), randColor()];
-    nextColors = [randColor(), randColor()];
+    // 2手先まで見えるよう、ネクストを2組分キューで持つ
+    if (!nextQueue) nextQueue = [[randColor(), randColor()], [randColor(), randColor()]];
+    const colors = nextQueue.shift();
+    nextQueue.push([randColor(), randColor()]);
     return { row: 1, col: 2, rot: 0, axis: colors[0], child: colors[1] };
   }
 
@@ -1587,7 +1600,7 @@
 
     function reset() {
       board = Array.from({ length: TOTAL }, () => Array(COLS).fill(null));
-      nextColors = null; piece = newPiece();
+      nextQueue = null; piece = newPiece();
       score = 0; maxChain = 0; gameOver = false;
       dropTimer = 0; phase = 'play';
       clearingList = []; clearTimer = 0; resolveChain = 0; particles = [];
@@ -1629,10 +1642,11 @@
       setDropInterval: (ms) => { dropInterval = ms; },
       dangerLevel,
       get score() { return score; },
+      get maxChain() { return maxChain; },
       get phase() { return phase; },
       get alive() { return !gameOver; },
       get piece() { return piece; },
-      get nextColors() { return nextColors; },
+      get nextQueue() { return nextQueue; },
       get board() { return board; },
       get pendingGarbage() { return pendingGarbage; },
       setPending: (n) => { pendingGarbage = Math.max(0, n); },
@@ -1667,9 +1681,11 @@
   let loserSide = null;
   let difficulty = 1;         // 0弱 1中 2強
   let colorCount = 4;
+  let mode = 'vs';            // 'vs'=CPU対戦 / 'solo'=一人で練習
 
   // おじゃまの送り: 自分の予告を相殺→余りを相手へ
   function routeGarbage(from, to, n) {
+    if (mode !== 'vs') return;   // 一人練習はおじゃま無し
     const leftover = n - from.pendingGarbage;
     if (leftover >= 0) { from.setPending(0); to.addGarbage(leftover); }
     else { from.setPending(from.pendingGarbage - n); }
@@ -1694,6 +1710,7 @@
   }
   function onCollapseDone(side) {
     if (matchPhase !== 'collapsing' || side !== loserSide) return;
+    if (mode === 'solo') { matchPhase = 'between'; setTimeout(showResult, 600); return; }
     const winner = loserSide === 'p' ? 'c' : 'p';
     wins[winner]++;
     updateStars();
@@ -1711,9 +1728,14 @@
 
   function showResult() {
     matchPhase = 'over'; gGameOver = true; stopBGM();
-    const win = wins.p > wins.c;
-    $('result-title').textContent = win ? 'YOU WIN!' : 'YOU LOSE...';
-    $('result-sub').textContent = 'あなた ' + wins.p + ' - ' + wins.c + ' CPU';
+    if (mode === 'solo') {
+      $('result-title').textContent = 'GAME OVER';
+      $('result-sub').textContent = 'スコア ' + playerField.score + ' ／ 最大 ' + playerField.maxChain + ' 連鎖';
+    } else {
+      const win = wins.p > wins.c;
+      $('result-title').textContent = win ? 'YOU WIN!' : 'YOU LOSE...';
+      $('result-sub').textContent = 'あなた ' + wins.p + ' - ' + wins.c + ' CPU';
+    }
     $('resultov').classList.add('show');
   }
 
@@ -1730,6 +1752,7 @@
     startRound();
   }
   function startRound() {
+    document.body.classList.toggle('mode-solo', mode === 'solo');
     $('ko-p').classList.remove('show'); $('ko-c').classList.remove('show');
     const d = DIFF[difficulty];
     playerField.setColorCount(colorCount); cpuField.setColorCount(colorCount);
@@ -1836,17 +1859,27 @@
   // ===== 次ぷよプレビュー描画 =====
   const nxp = $('nx-p').getContext('2d');
   const nxc = $('nx-c').getContext('2d');
-  function drawNextPreview(g, cv, colors) {
-    g.clearRect(0, 0, cv.width, cv.height);
-    if (!colors) return;
-    const x = (cv.width - CELL) / 2;
-    if (colors[0] === colors[1]) {
-      const cx = x + CELL / 2, cy = 8 + CELL, w = CELL * 0.66, h = CELL * 0.92;
-      g.fillStyle = bodyGrad(g, colors[0], cy - h / 2, cy + h / 2);
-      roundRectPath(g, cx - w / 2, cy - h / 2, w, h, CELL * 0.2); g.fill();
+  // ネクスト2組(NEXT・NEXT2)を縦に並べて表示。2組目は少し小さく
+  function drawPairAt(g, cv, pair, topY, scale) {
+    if (!pair) return;
+    g.save();
+    g.translate(cv.width / 2, topY);
+    g.scale(scale, scale);
+    const lx = -CELL / 2;
+    if (pair[0] === pair[1]) {
+      const ccy = CELL, w = CELL * 0.66, h = CELL * 0.92;
+      g.fillStyle = bodyGrad(g, pair[0], ccy - h / 2, ccy + h / 2);
+      roundRectPath(g, -w / 2, ccy - h / 2, w, h, CELL * 0.2); g.fill();
     }
-    drawPuyo(g, x, 8, colors[0]);
-    drawPuyo(g, x, 8 + CELL, colors[1], colors[0] === colors[1]);
+    drawPuyo(g, lx, 0, pair[0]);
+    drawPuyo(g, lx, CELL, pair[1], pair[0] === pair[1]);
+    g.restore();
+  }
+  function drawNextPreview(g, cv, queue) {
+    g.clearRect(0, 0, cv.width, cv.height);
+    if (!queue || !queue.length) return;
+    drawPairAt(g, cv, queue[0], 6, 1);                       // NEXT(大)
+    drawPairAt(g, cv, queue[1], 6 + CELL * 2 + 16, 0.72);    // NEXT2(小)
   }
 
   // ===== メインループ =====
@@ -1854,13 +1887,14 @@
   function loop(now) {
     const dt = Math.min(now - last, 50); last = now;
     if (matchPhase === 'playing' && !gPaused) {
-      playerField.update(dt); cpuField.update(dt); aiTick(dt);
+      playerField.update(dt);
+      if (mode === 'vs') { cpuField.update(dt); aiTick(dt); }
     } else if (matchPhase === 'collapsing') {
       (loserSide === 'p' ? playerField : cpuField).update(dt);
     }
     playerField.draw(); cpuField.draw();
-    drawNextPreview(nxp, $('nx-p'), playerField.nextColors);
-    drawNextPreview(nxc, $('nx-c'), cpuField.nextColors);
+    drawNextPreview(nxp, $('nx-p'), playerField.nextQueue);
+    drawNextPreview(nxc, $('nx-c'), cpuField.nextQueue);
     updateBGMTempo(matchPhase === 'playing' ? playerField.dangerLevel() : 0);
     requestAnimationFrame(loop);
   }
@@ -1903,6 +1937,15 @@
     });
   }
   bindDiffSeg('diff-seg'); bindDiffSeg('diff-seg2');
+
+  // モード選択(CPU対戦 / 一人で練習)
+  $('mode-seg').addEventListener('click', (e) => {
+    const b = e.target.closest('.seg-btn'); if (!b) return;
+    mode = b.dataset.m;
+    for (const x of $('mode-seg').querySelectorAll('.seg-btn')) x.classList.toggle('is-on', x.dataset.m === mode);
+    $('diff-wrap').style.display = mode === 'solo' ? 'none' : '';
+    document.body.classList.toggle('mode-solo', mode === 'solo');
+  });
 
   $('start-btn').addEventListener('click', () => { ensureAudio(); $('startov').classList.remove('show'); startMatch(); });
   $('again-btn').addEventListener('click', () => { $('resultov').classList.remove('show'); gGameOver = false; startMatch(); });
