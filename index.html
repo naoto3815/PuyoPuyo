@@ -1878,8 +1878,8 @@
   function drawNextPreview(g, cv, queue) {
     g.clearRect(0, 0, cv.width, cv.height);
     if (!queue || !queue.length) return;
-    drawPairAt(g, queue[0], CELL * 0.62, cv.height - CELL * 2 - 6, 1.0);   // NEXT(大・左下)
-    drawPairAt(g, queue[1], cv.width - CELL * 0.5, 6, 0.72);               // NEXT2(小・右上)
+    drawPairAt(g, queue[0], CELL * 0.62, cv.height - CELL * 2 - 6, 1.0);   // NEXT(左下)
+    drawPairAt(g, queue[1], cv.width - CELL * 0.62, 6, 1.0);               // NEXT2(右上・同じ大きさ)
   }
 
   // ===== メインループ =====
