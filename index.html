@@ -412,7 +412,15 @@
     { show: 'ばよえーん',     say: 'ばよえーん',     file: 'voice/6.mp3' },
   ];
   const voiceBuffers = new Array(CHAIN_SPELLS.length).fill(null);
+  const voiceBytes = new Array(CHAIN_SPELLS.length).fill(null);   // 先読みしたmp3バイト列
   let voiceLoadStarted = false, voiceSource = null, jaVoice = null;
+  // ページ表示時にmp3を即先読み(fetchはユーザー操作前でもOK)。スタート後の最初の連鎖でも間に合わせる
+  if (typeof fetch === 'function') {
+    CHAIN_SPELLS.forEach((spell, i) => {
+      if (!spell.file) return;
+      fetch(spell.file).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject())).then((b) => { voiceBytes[i] = b; }).catch(() => {});
+    });
+  }
   function pickJaVoice() {
     if (!('speechSynthesis' in window)) return;
     const vs = speechSynthesis.getVoices().filter((v) => /ja[-_]?JP|^ja$/i.test(v.lang) || /日本語/.test(v.name));
@@ -429,8 +437,9 @@
     voiceLoadStarted = true;
     CHAIN_SPELLS.forEach((spell, i) => {
       if (!spell.file) return;
-      fetch(spell.file).then((r) => { if (!r.ok) throw 0; return r.arrayBuffer(); })
-        .then((buf) => audioCtx.decodeAudioData(buf)).then((d) => { voiceBuffers[i] = d; }).catch(() => {});
+      const decode = (buf) => audioCtx.decodeAudioData(buf).then((d) => { voiceBuffers[i] = d; }).catch(() => {});
+      if (voiceBytes[i]) decode(voiceBytes[i]);   // 先読み済みなら即デコード(待たない)
+      else fetch(spell.file).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject())).then(decode).catch(() => {});
     });
   }
   function stopVoice() { if (voiceSource) { try { voiceSource.stop(); } catch (e) {} voiceSource = null; } if ('speechSynthesis' in window) speechSynthesis.cancel(); }
@@ -445,18 +454,10 @@
         const g = audioCtx.createGain(); g.gain.value = 1;
         src.connect(g).connect(audioCtx.destination);
         src.onended = () => { if (voiceSource === src) voiceSource = null; };
-        voiceSource = src; src.start(); return;
+        voiceSource = src; src.start();
       } catch (e) {}
     }
-    if (!('speechSynthesis' in window)) return;
-    try {
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(CHAIN_SPELLS[idx].say);
-      u.lang = 'ja-JP'; if (jaVoice) u.voice = jaVoice;
-      u.pitch = Math.min(1.7 + Math.min(chain - 1, 8) * 0.05 + (Math.random() - 0.5) * 0.12, 2);
-      u.rate = Math.min(1.25 + Math.min(chain - 1, 6) * 0.04, 1.6); u.volume = 1;
-      speechSynthesis.speak(u);
-    } catch (e) {}
+    // mp3が未ロードのときは無音にする(機械音声=TTSには戻さない)。連鎖音(sPop)は別途鳴る
   }
 
   // ===== 純粋な描画ヘルパ(盤面に依存しない) =====
